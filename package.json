@@ -1,7 +1,7 @@
 {
-  "name": "@interop/isomorphic-lib-template",
-  "description": "A Typescript/Javascript isomorphic library template, for use in the browser, Node.js, and React Native.",
-  "version": "0.0.1",
+  "name": "@interop/vh-resource-log",
+  "description": "The Resource Log Profile's generic client side: strict JSON Lines codec, store and pin ports, chain verification, append/create with CAS rebase, and the sealing sweep.",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "build": "pnpm run clear && tsc",
@@ -29,6 +29,12 @@
       "react-native": "./dist/index.js",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "react-native": "./dist/testing.js",
+      "import": "./dist/testing.js",
+      "default": "./dist/testing.js"
     }
   },
   "module": "dist/index.js",
@@ -36,9 +42,13 @@
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "dependencies": {
+    "@interop/did-method-webvh": "^5.5.0",
+    "@interop/storage-core": "^0.9.1",
+    "json-canonicalize": "2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@interop/ed25519-verification-key": "^8.0.4",
     "@playwright/test": "^1.60.0",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "^4.1.7",
@@ -57,7 +67,11 @@
     "provenance": true
   },
   "keywords": [
-    "isomorphic"
+    "isomorphic",
+    "resource-log",
+    "wallet-attached-storage",
+    "verifiable-history",
+    "did-webvh"
   ],
   "packageManager": "pnpm@11.5.0",
   "engines": {
@@ -70,8 +84,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/interop-alliance/isomorphic-lib-template.git"
+    "url": "git+https://github.com/interop-alliance/vh-resource-log.git"
   },
-  "homepage": "https://github.com/interop-alliance/isomorphic-lib-template",
-  "bugs": "https://github.com/interop-alliance/isomorphic-lib-template/issues"
+  "homepage": "https://github.com/interop-alliance/vh-resource-log",
+  "bugs": "https://github.com/interop-alliance/vh-resource-log/issues"
 }
