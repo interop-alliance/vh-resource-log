@@ -71,11 +71,12 @@ was-client and wallet-core depend on this library; nothing here depends on them.
 6. **The admission hook is where controller-domain append policy lives.** The
    library carries none of it: `admitAppend`, when supplied, is called per PROOF
    (multi-proof entries are legal, so a per-entry call would admit an unadmitted
-   proof in a later array position), after `assertionMethod` membership passes
-   and before the anchor floor advances, for every entry past genesis; a hook
-   throw propagates with its class intact (the capture slot in `verify.ts` --
-   the library cannot name the consumer's error classes, and a blanket
-   pass-through would stop wrapping kernel failures as the integrity class). The
+   proof in a later array position), after `assertionMethod` membership passes,
+   after every proof of the entry has verified cryptographically, and before the
+   anchor floor advances, for every entry past genesis. The hook runs after the
+   kernel call, outside the integrity wrap, so a throw needs no capture and a
+   forged signature is refused as the integrity class whatever the hook would
+   have said (the hook never sees input from an unverified proof). The
    obligation the seam creates: a controller port over a document that can list
    ladder-shaped verification methods (any wallet account did:webvh document)
    MUST supply the hook, carrying wallet-core's ceremony-tail license -- a bare

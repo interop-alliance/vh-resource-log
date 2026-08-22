@@ -44,10 +44,12 @@ export interface ResourceLogController {
    * The admission hook: controller-domain append policy the generic verifier
    * cannot know, consulted per PROOF (multi-proof entries are legal, so a
    * per-entry call would admit an unadmitted proof in a later array
-   * position), after `assertionMethod` membership passes and before the
-   * anchor floor advances, for every entry past genesis. A throw refuses the
-   * append (or the served log) with the hook's own error class, propagated
-   * intact by the verifier.
+   * position), after `assertionMethod` membership passes, after the entry's
+   * proofs verify, and before the anchor floor advances, for every entry past
+   * genesis. A throw refuses the append (or the served log) with the hook's
+   * own error class, propagated intact by the verifier. The hook is not
+   * called for any proof of an entry that fails verification; an
+   * implementation must not depend on being called.
    *
    * The obligation the seam creates: a controller port over a document that
    * can list ladder-shaped verification methods (any wallet account

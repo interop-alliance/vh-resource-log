@@ -1,5 +1,18 @@
 # @interop/vh-resource-log Changelog
 
+## 0.2.0 - TBD
+
+### Changed
+
+- **BREAKING**: the controller port's `admitAppend` hook now runs after the
+  entry's proofs verify. It used to run inside the kernel's authorize callback,
+  before the signature check. An entry with a forged `proofValue` is now refused
+  as `ResourceLogIntegrityError` whatever the hook would have said, on the read
+  path, the read-back after an append, and the sealing sweep, and the hook never
+  receives input from an unverified proof. Consumers whose refusal predicates
+  match only the Integrity and Continuity names now hard-refuse such a log where
+  they warned and continued. No error name changes.
+
 ## 0.1.2 - 2026-08-22
 
 ### Changed

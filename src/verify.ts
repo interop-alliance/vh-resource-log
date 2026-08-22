@@ -12,9 +12,11 @@
  * hook, terminal-entry recognition, and continuity against the chain-head
  * pin. Any failure rejects the LOG, not just the failing entry, and nothing
  * served -- a stated head, a digest, a count -- is ever accepted in place of
- * recomputation; a throw from the admission hook keeps its own class (the
- * capture mechanism below) so callers can tell a refused admission from a
- * corrupt log.
+ * recomputation. The admission hook runs after the kernel call, once every
+ * proof of the entry has verified, outside the integrity wrap: a forged
+ * signature is refused as the integrity class whatever the hook would have
+ * said, and a hook throw keeps its own class so callers can tell a refused
+ * admission from a corrupt log.
  */
 import {
   buildVersionId,
@@ -419,13 +421,11 @@ export async function verifyResourceLog({
   for (const [index, entry] of entries.entries()) {
     const ordinal = index + 1
     let entryAnchorIndex = anchorFloor
-    // A throw from the controller's admitAppend hook, captured so the catch
-    // below can rethrow it with its class intact: the library cannot name the
-    // hook's error classes, and a blanket pass-through would stop wrapping
-    // kernel failures as the integrity class. (A property slot, not a `let`:
-    // the assignment happens inside the authorize closure, which TypeScript's
-    // flow analysis does not track.)
-    const hookSlot: { thrown: { err: unknown } | null } = { thrown: null }
+    // The admission hook's per-proof inputs, recorded during authorization
+    // and drained only after every proof of the entry has verified (below).
+    const admissions: Array<
+      Parameters<NonNullable<ResourceLogController['admitAppend']>>[0]
+    > = []
     // The kernel calls `authorize` before `resolveVM` for the same proof, so
     // the parse throws from `authorize` exactly as it did when both parsed.
     const parsed = new Map<string, ReturnType<typeof parseAnchoredVm>>()
@@ -488,24 +488,18 @@ export async function verifyResourceLog({
             `version.`
         )
       }
-      // The admission hook: controller-domain append policy (wallet-core's
-      // ceremony-tail license on ladder-signed appends), consulted per proof
-      // for every entry past genesis, after membership passed and before the
-      // anchor floor advances. The floor at this point is still the previous
-      // entries' effective anchor -- the verified head this append extended.
+      // Record the admission input for every entry past genesis; the hook
+      // itself runs after the kernel call. The floor at this point is still
+      // the previous entries' effective anchor -- the verified head this
+      // append extended -- and nothing assigns it before the drain.
       if (index > 0 && controller.admitAppend !== undefined) {
-        try {
-          await controller.admitAppend({
-            ordinal,
-            keyMultibase,
-            ...(anchor === undefined ? {} : { anchor }),
-            anchorIndex: versioned ? anchorIndex : null,
-            headAnchorIndex: anchorFloor
-          })
-        } catch (err) {
-          hookSlot.thrown = { err }
-          throw err
-        }
+        admissions.push({
+          ordinal,
+          keyMultibase,
+          ...(anchor === undefined ? {} : { anchor }),
+          anchorIndex: versioned ? anchorIndex : null,
+          headAnchorIndex: anchorFloor
+        })
       }
       entryAnchorIndex = Math.max(entryAnchorIndex, anchorIndex)
     }
@@ -523,12 +517,6 @@ export async function verifyResourceLog({
         }
       )
     } catch (err) {
-      if (hookSlot.thrown !== null) {
-        // The admission hook refused (or broke): its error propagates with
-        // class intact -- an admission refusal is not evidence of a doctored
-        // log, and neither is a hook-internal bug.
-        throw hookSlot.thrown.err
-      }
       if (err instanceof ResourceLogIntegrityError) {
         throw err
       }
@@ -536,6 +524,18 @@ export async function verifyResourceLog({
         `Resource log entry ${ordinal} failed proof verification.`,
         { cause: err }
       )
+    }
+    // The admission hook: controller-domain append policy (wallet-core's
+    // ceremony-tail license on ladder-signed appends), consulted per proof
+    // in array order, after membership passed and every proof of the entry
+    // verified, and before the anchor floor advances. Signature first, so
+    // the hook never sees input from an unverified proof and a forged entry
+    // is refused as the integrity class even where the hook would also
+    // refuse it. The call sits outside the wrap above: a hook throw keeps
+    // its class -- an admission refusal is not evidence of a doctored log,
+    // and neither is a hook-internal bug.
+    for (const admission of admissions) {
+      await controller.admitAppend?.(admission)
     }
     anchorFloor = entryAnchorIndex
   }

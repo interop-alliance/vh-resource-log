@@ -2,7 +2,8 @@
  * Shared fixtures for the resource-log suites, beside the published fakes
  * (`src/testing.ts`, the `./testing` subpath: `fakeController`,
  * `memoryLogStore`): a signing-client fixture (a fresh Ed25519 key wrapped as
- * a `ResourceLogSigner`) and a terminal handover-entry builder (nothing in
+ * a `ResourceLogSigner`), a co-signing helper that appends a second proof to
+ * an already-signed entry, and a terminal handover-entry builder (nothing in
  * `src/` emits terminal entries yet, so the suite constructs them from the
  * kernel primitives directly).
  */
@@ -81,6 +82,49 @@ export function anchoredVm({
   const anchor = controller.versionIds[controller.versionIds.length - 1]
   const query = anchor === undefined ? '' : `?versionId=${anchor}`
   return `${controller.did}${query}#${keyMultibase}`
+}
+
+/**
+ * Co-signs an already-signed entry: returns it with one more proof appended,
+ * signed by `signer` under its anchored verification method and carrying the
+ * entry's own `versionTime` as the proof's `created` time. Multi-proof entries
+ * are legal in the profile, and the added proof sits in a later array
+ * position -- the placement a per-entry admission hook would never see.
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}
+ * @param options.controller {ResourceLogController}
+ * @param options.signer {ResourceLogSigner}
+ * @returns {Promise<ResourceLogEntry>}
+ */
+export async function coSignEntry({
+  entry,
+  controller,
+  signer
+}: {
+  entry: ResourceLogEntry
+  controller: ResourceLogController
+  signer: ResourceLogSigner
+}): Promise<ResourceLogEntry> {
+  const { proof: _omitted, ...unsigned } = entry
+  const coSignature = await signDataIntegrityProof(
+    unsigned,
+    createDataIntegrityProofTemplate({
+      verificationMethod: anchoredVm({
+        controller,
+        keyMultibase: signer.keyMultibase
+      }),
+      created: entry.versionTime
+    }),
+    signerFromExternalKey({
+      publicKeyMultibase: signer.keyMultibase,
+      sign: signer.sign
+    })
+  )
+  return {
+    ...entry,
+    proof: [...entry.proof, coSignature as ResourceLogEntry['proof'][number]]
+  }
 }
 
 /**
