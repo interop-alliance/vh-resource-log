@@ -109,3 +109,32 @@ version (or the sealing sweep driven by it) writes durably, `confirmAppend`'s
 re-verify then fails, and every future reader fails from genesis because the
 entry cannot be removed. wallet-core's `rosterLogStore.replace` duplicates only
 the ladder-license half pre-write and its comment names exactly this hazard.
+
+---
+
+### VRL-3: Reject an empty ETag as "no validator"
+
+- status: done (2026-08-22)
+- priority: high
+- labels: append, cas
+- verdict: confirmed
+- touches:
+  - shipped 2026-08-22: vh-resource-log `src/append.ts` (the guard now tests
+    `!etag`), `src/store.ts` (the `read` port JSDoc states that an empty string
+    counts as absent), `test/node/resourceLog-append.test.ts` (blank-validator
+    case), CHANGELOG.md (0.3.1)
+  - `createResourceLog` needed no change: it never conditions a write on the
+    etag (the guarded `store.create` uses `If-None-Match`, and the lost-race
+    branch only reads)
+- acceptance:
+  - [x] `appendResourceLog` and `createResourceLog` treat `''` (and any other
+        empty validator) the same as `undefined`: refuse to write rather than
+        send a blank `If-Match`
+  - [x] Unit test with a store whose `read` returns `etag: ''`
+
+`src/append.ts:146`. The no-unconditional-write guard tests only
+`etag === undefined`. was-client's `readEtag` maps a present-but-blank `ETag`
+header to `''`, which the guard passes, so `writeHeaders` emits a literal empty
+`If-Match` that a server may ignore (invariant 8 forbids an unconditional
+write). On the encrypted-collection codec path the same value 412s on all three
+CAS attempts instead.

@@ -1,5 +1,12 @@
 # @interop/vh-resource-log Changelog
 
+## 0.3.1 - TBD
+
+### Fixed
+
+- `appendResourceLog` now treats an empty `etag` from `store.read` as no
+  validator and refuses to write, instead of sending a blank `If-Match`.
+
 ## 0.3.0 - 2026-08-22
 
 ### Added

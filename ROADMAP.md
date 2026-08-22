@@ -23,13 +23,14 @@ Conventions".
 
 ## Source of the current items
 
-VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22 (VRL-1
-and VRL-2 have shipped and live in [archived-roadmap.md](archived-roadmap.md);
-eight finder angles, each candidate independently verified against the code, the
-encrypted-collections spec, and the wallet-core / was-client call sites). The
-verdict recorded on each item is the verifier's: `confirmed` means the failure
-was reproduced or traced end to end, `plausible` means the mechanism is real but
-the observable effect needs a caller that does not exist in-tree today.
+VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22
+(VRL-1, VRL-2, and VRL-3 have shipped and live in
+[archived-roadmap.md](archived-roadmap.md); eight finder angles, each candidate
+independently verified against the code, the encrypted-collections spec, and the
+wallet-core / was-client call sites). The verdict recorded on each item is the
+verifier's: `confirmed` means the failure was reproduced or traced end to end,
+`plausible` means the mechanism is real but the observable effect needs a caller
+that does not exist in-tree today.
 
 Items VRL-1, VRL-2, and VRL-4 change verifier semantics that ARCHITECTURE.md
 documents as invariants, so they carry the design gate. Items that add a new
@@ -37,25 +38,6 @@ error class, `reason` value, or other error-name contract (VRL-6, VRL-13,
 VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ## Verifier and append correctness
-
-### VRL-3: Reject an empty ETag as "no validator"
-
-- status: todo
-- priority: high
-- labels: append, cas
-- verdict: confirmed
-- acceptance:
-  - [ ] `appendResourceLog` and `createResourceLog` treat `''` (and any other
-        empty validator) the same as `undefined`: refuse to write rather than
-        send a blank `If-Match`
-  - [ ] Unit test with a store whose `read` returns `etag: ''`
-
-`src/append.ts:146`. The no-unconditional-write guard tests only
-`etag === undefined`. was-client's `readEtag` maps a present-but-blank `ETag`
-header to `''`, which the guard passes, so `writeHeaders` emits a literal empty
-`If-Match` that a server may ignore (invariant 8 forbids an unconditional
-write). On the encrypted-collection codec path the same value 412s on all three
-CAS attempts instead.
 
 ### VRL-4: Check every proof against the entry's own anchor
 

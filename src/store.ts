@@ -37,7 +37,9 @@ export interface ResourceLogStore {
    * {@link create}); throws on a body that does not parse as strict JSON
    * Lines. `etag` is absent against a backend that does not version resources
    * -- a caller MUST NOT append without one (the profile forbids falling back
-   * to an unconditional write).
+   * to an unconditional write). An empty string counts as absent on the append
+   * path, so an adapter need not normalize a blank validator away, and gains
+   * nothing by passing one.
    *
    * @returns {Promise<{ entries: ResourceLogEntry[]; etag?: string } | null>}
    */

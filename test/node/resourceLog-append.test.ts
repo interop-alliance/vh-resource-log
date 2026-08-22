@@ -525,6 +525,43 @@ describe('appendResourceLog', () => {
     ).rejects.toThrow(/no validator/)
   })
 
+  it('refuses to append on a blank validator (no unconditional writes)', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 1 }
+    })
+    let appends = 0
+    const blankEtagStore: ResourceLogStore = {
+      ...store,
+      async read() {
+        const current = await store.read()
+        return current === null ? null : { entries: current.entries, etag: '' }
+      },
+      async append(entry, options) {
+        appends++
+        return store.append(entry, options)
+      }
+    }
+    await expect(
+      appendResourceLog({
+        store: blankEtagStore,
+        controller,
+        expectedMethod: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: alice.logSigner,
+        buildState: () => ({ type: 'TestState', value: 2 })
+      })
+    ).rejects.toThrow(/no validator/)
+    expect(appends).toBe(0)
+  })
+
   it('refuses to extend a log closed by a terminal handover entry', async () => {
     const { alice, controller, store, pinStore } = await makeWriter()
     await createResourceLog({

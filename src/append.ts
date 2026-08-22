@@ -154,7 +154,9 @@ export async function appendResourceLog({
     if (verified.terminal) {
       throw new ResourceLogClosedError({ nextLog: verified.terminal })
     }
-    if (etag === undefined) {
+    // A blank validator counts as absent: an empty `If-Match` is one a server
+    // may treat as unconditional, which the profile forbids.
+    if (!etag) {
       throw new Error(
         'Cannot append to the resource log: the backend returned no ' +
           'validator, and the profile forbids an unconditional write.'
