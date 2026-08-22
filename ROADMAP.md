@@ -23,7 +23,8 @@ Conventions".
 
 ## Source of the current items
 
-VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22 (eight
+VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22 (VRL-1
+has shipped and lives in [archived-roadmap.md](archived-roadmap.md); eight
 finder angles, each candidate independently verified against the code, the
 encrypted-collections spec, and the wallet-core / was-client call sites). The
 verdict recorded on each item is the verifier's: `confirmed` means the failure
@@ -36,53 +37,6 @@ error class, `reason` value, or other error-name contract (VRL-6, VRL-13,
 VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ## Verifier and append correctness
-
-### VRL-1: Run `admitAppend` after the signature check, not before
-
-- status: in-progress
-- priority: high
-- labels: verify, admission, error-classification
-- verdict: confirmed
-- touches:
-  - shipped 2026-08-22: vh-resource-log `src/verify.ts` (admission inputs queued
-    in `authorize`, drained after `verifyEntryProofs`), `src/controller.ts`
-    (hook JSDoc), `test/node/resourceLog-admitAppend.test.ts` (five cases),
-    `test/node/fixtures/log.ts` (`coSignEntry`), ARCHITECTURE.md (invariant 6
-    ordering and mechanism text), CHANGELOG.md (0.2.0, breaking)
-  - wallet-core: predicates confirmed against the new order (no code change;
-    `isLogRefusal` / `isRosterRefusal` now receive Integrity for a forged entry,
-    the branch they were written for; suites pass against the new build);
-    ARCHITECTURE.md license sentence updated 2026-08-22; the residual soft
-    classification of license refusals is WC-149. Unresolved: dependency range
-    bump to `^0.2.0` and a release (maintainer).
-  - was-client, freewallet: `unaffected` in behavior (no verifier call or class
-    dispatch that changes; design section 3). Unresolved: dependency range bump
-    to `^0.2.0` (maintainer).
-  - shipped 2026-08-22: did-method-webvh `src/assertions.ts`
-    (`verifyEntryProofs` JSDoc states the every-proof-verified guarantee)
-  - shipped 2026-08-22: byoe-ecosystem LEARNINGS.md (policy checks inside
-    pre-verification callbacks)
-- design: designs/VRL-1-admission-after-signature.md
-- design-approved: 2026-08-22
-- acceptance:
-  - [x] A served entry with a garbage `proofValue` whose verification method is
-        under `assertionMethod` at the anchor is refused as
-        `ResourceLogIntegrityError`, even when the controller's `admitAppend`
-        would also refuse it
-  - [x] `admitAppend` still runs per proof, after membership, after every proof
-        of the entry has verified, and before `anchorFloor` advances for the
-        entry
-  - [x] Regression test in `test/node/resourceLog-admitAppend.test.ts`
-
-`src/verify.ts:498`. The kernel calls `authorize` before `verifier.verify`, and
-`admitAppend` runs inside `authorize`. A forged entry therefore surfaces as the
-consumer's admission-refusal class (wallet-core's `ResourceLogLicenseError`)
-instead of `ResourceLogIntegrityError`. wallet-core's `isLogRefusal` and
-`isRosterRefusal` match only the Integrity / Continuity names, so the fabricated
-log lands in the warn-and-proceed and serve-stale-cache branches. Fix shape:
-have `authorize` record the admission arguments per proof and drain that queue
-after `verifyEntryProofs` resolves, so a signature failure wins over an
-admission refusal.
 
 ### VRL-2: Pre-write admission pass in `appendResourceLog`
 
