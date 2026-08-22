@@ -1,6 +1,6 @@
 # @interop/vh-resource-log Changelog
 
-## 0.1.2 - TBD
+## 0.1.2 - 2026-08-22
 
 ### Changed
 
