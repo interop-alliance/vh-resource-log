@@ -1,7 +1,7 @@
 {
   "name": "@interop/vh-resource-log",
   "description": "The Resource Log Profile's generic client side: strict JSON Lines codec, store and pin ports, chain verification, append/create with CAS rebase, and the sealing sweep.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "build": "pnpm run clear && tsc",
