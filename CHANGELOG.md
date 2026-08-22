@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.1.1 - 2026-08-22
+
+### Changed
+
+- Update to latest `json-canonicalize@3.0.0`.
+
 ## 0.1.0 - 2026-08-22
 
 ### Added

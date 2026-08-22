@@ -15,8 +15,8 @@ importers:
         specifier: ^0.9.1
         version: 0.9.1
       json-canonicalize:
-        specifier: 2.0.0
-        version: 2.0.0
+        specifier: 3.0.0
+        version: 3.0.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -652,6 +652,10 @@ packages:
 
   json-canonicalize@2.0.0:
     resolution: {integrity: sha512-yyrnK/mEm6Na3ChbJUWueXdapueW0p380RUyTW87XGb1ww8l8hU0pRrGC3vSWHe9CxrbPHX2fGUOZpNiHR0IIg==}
+
+  json-canonicalize@3.0.0:
+    resolution: {integrity: sha512-PW21BtLiKRV7gJcT8jf2X4UNN2AF4c1TYEVug1wAWRQSGBJj7fL+v4NgOkIo54SCBPFDyqzMcOJNhjwywCIBuw==}
+    engines: {node: '>=8.5'}
 
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
@@ -1594,6 +1598,8 @@ snapshots:
   json-buffer@3.0.1: {}
 
   json-canonicalize@2.0.0: {}
+
+  json-canonicalize@3.0.0: {}
 
   json-schema-traverse@0.4.1: {}
 
