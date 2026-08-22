@@ -24,8 +24,8 @@ Conventions".
 ## Source of the current items
 
 VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22 (VRL-1
-has shipped and lives in [archived-roadmap.md](archived-roadmap.md); eight
-finder angles, each candidate independently verified against the code, the
+and VRL-2 have shipped and live in [archived-roadmap.md](archived-roadmap.md);
+eight finder angles, each candidate independently verified against the code, the
 encrypted-collections spec, and the wallet-core / was-client call sites). The
 verdict recorded on each item is the verifier's: `confirmed` means the failure
 was reproduced or traced end to end, `plausible` means the mechanism is real but
@@ -37,56 +37,6 @@ error class, `reason` value, or other error-name contract (VRL-6, VRL-13,
 VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ## Verifier and append correctness
-
-### VRL-2: Pre-write admission pass in `appendResourceLog`
-
-- status: in-progress
-- priority: high
-- labels: append, admission, poisoning
-- verdict: confirmed
-- touches:
-  - vh-resource-log `src/verify.ts` (the extracted per-entry check and the
-    export), `src/append.ts`, `src/controller.ts` and `src/errors.ts` (JSDoc),
-    `src/index.ts`, ARCHITECTURE.md (invariants 6/7/10 prose, new invariant 11,
-    ownership heuristic), CHANGELOG.md (0.3.0)
-  - wallet-core `src/keys/rosterLogStore.ts` (`replace` and `create` adopt the
-    export; the inline ladder-license block goes; ceremony-reviewer pass over
-    the `lastVerified` / controller-floor lifecycle when made),
-    ARCHITECTURE.md:574-587 (two passages), dependency range; WC-149 interaction
-    noted there
-  - was-client (affected through the descriptor-store port only: a refused
-    roster write now surfaces before anything is written; range bump)
-  - encrypted-collections-spec (`#log-append` gains a writer SHOULD to verify
-    the built entry before writing it, decided 2026-08-22; maintainer edits the
-    spec)
-  - freewallet (direct `^0.2.0` pin plus `link:` wallet-core; range bump in
-    publish order), dcw (pins wallet-core `^0.45.0`; observes nothing until it
-    bumps)
-- design: designs/VRL-2-pre-write-admission.md
-- design-approved: 2026-08-22
-- acceptance:
-  - [x] Before `store.append`, the freshly built entry is verified as the reader
-        would verify it at its ordinal (shape, chain, proofs, authorization at
-        the head's floor, `admitAppend` if supplied), through the same code the
-        read loop runs
-  - [x] A refused pre-check throws the same class the read-back verify would
-        have thrown, and nothing is written
-  - [x] The sealing sweep (`sealResourceLog`) is covered by the same pre-check
-  - [x] `createResourceLog` verifies the genesis as a one-entry log before
-        `store.create`, and a refusal against an existing log still adopts the
-        winner (design doc section 4, lost-race rows)
-  - [x] Read-back confirmation is unchanged (the pre-check is best effort; the
-        anchor floor can still go stale before the write lands)
-  - [ ] wallet-core's `rosterLogStore.replace` and `create` call the export
-        (each write site in design doc section 3 handled or exempted)
-
-`src/append.ts:166`, `src/entry.ts:55`. `anchoredVerificationMethod` stamps
-`versionIds[last]` unconditionally and the entry is written straight after
-`buildResourceLogEntry`. A client whose key was removed at the latest controller
-version (or the sealing sweep driven by it) writes durably, `confirmAppend`'s
-re-verify then fails, and every future reader fails from genesis because the
-entry cannot be removed. wallet-core's `rosterLogStore.replace` duplicates only
-the ladder-license half pre-write and its comment names exactly this hazard.
 
 ### VRL-3: Reject an empty ETag as "no validator"
 
@@ -299,6 +249,35 @@ only in production.
 no null guard; `append.ts:153` gates only on `state === null`, so a JS
 `buildState` returning `undefined` reaches it. `checkEntryShape` already has the
 guarded form of the same rule.
+
+### VRL-27: `readResourceLog` reports an absent log without consulting the pin
+
+- status: todo
+- priority: medium
+- labels: continuity, pin, read
+- verdict: plausible
+- touches:
+  - vh-resource-log `src/append.ts` (`readResourceLog`), ARCHITECTURE.md
+    (invariant 3 prose), `test/node/resourceLog-append.test.ts`
+  - wallet-core `rotateRosterToDocumentAndCascade` and `ensureUserKeyRoster`
+    (both treat a `null` read as the pre-genesis state), `descriptors.test.ts`
+    and `keys-rosterLogStore.test.ts`
+- acceptance:
+  - [ ] With a pin held for `logId`, a `store.read()` of `null` is refused as
+        `ResourceLogContinuityError` with reason `rollback` and the pinned head
+        attached, through `readResourceLog` and every caller of it
+        (`appendResourceLog`, `createResourceLog`, `sealResourceLog`)
+  - [ ] With no pin held, an absent log still reads as `null`
+  - [ ] wallet-core's governed read and create paths surface the refusal instead
+        of re-provisioning a fresh roster
+
+`src/append.ts:67-70`. The absent branch returns before `pinStore.read`, so a
+host that deletes or hides a log this client has pinned is reported as
+pre-genesis. Downstream, wallet-core re-provisions a new roster with a fresh
+epoch; the genesis pre-write pass is blind to it by design (`pin: null`, VRL-2
+design section 2), and `settle`'s read-back only catches it as `scid-switch`
+after `store.create` has landed a new log at the resource. Found by the VRL-2
+ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
 
 ## Error contracts and classification
 

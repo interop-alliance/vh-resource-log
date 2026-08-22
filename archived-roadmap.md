@@ -55,3 +55,57 @@ log lands in the warn-and-proceed and serve-stale-cache branches. Fix shape:
 have `authorize` record the admission arguments per proof and drain that queue
 after `verifyEntryProofs` resolves, so a signature failure wins over an
 admission refusal.
+
+---
+
+### VRL-2: Pre-write admission pass in `appendResourceLog`
+
+- status: done (2026-08-22)
+- priority: high
+- labels: append, admission, poisoning
+- verdict: confirmed
+- touches:
+  - vh-resource-log `src/verify.ts` (the extracted per-entry check and the
+    export), `src/append.ts`, `src/controller.ts` and `src/errors.ts` (JSDoc),
+    `src/index.ts`, ARCHITECTURE.md (invariants 6/7/10 prose, new invariant 11,
+    ownership heuristic), CHANGELOG.md (0.3.0)
+  - shipped 2026-08-22 (wallet-core 0.52.0, unpublished): wallet-core
+    `src/keys/rosterLogStore.ts` (`replace` and `create` adopt the export; the
+    inline ladder-license block goes; ceremony-reviewer pass over the
+    `lastVerified` / controller-floor lifecycle run), ARCHITECTURE.md (the two
+    license passages; WC-149 interaction noted there), dependency range
+    `^0.3.0`, CHANGELOG.md, one case each in `resourceLog-license.test.ts` and
+    `descriptors.test.ts`
+  - was-client (affected through the descriptor-store port only: a refused
+    roster write now surfaces before anything is written; range bump)
+  - encrypted-collections-spec (`#log-append` gains a writer SHOULD to verify
+    the built entry before writing it, decided 2026-08-22; maintainer edits the
+    spec)
+  - freewallet (direct `^0.2.0` pin plus `link:` wallet-core; range bump in
+    publish order), dcw (pins wallet-core `^0.45.0`; observes nothing until it
+    bumps)
+- design: designs/VRL-2-pre-write-admission.md
+- design-approved: 2026-08-22
+- acceptance:
+  - [x] Before `store.append`, the freshly built entry is verified as the reader
+        would verify it at its ordinal (shape, chain, proofs, authorization at
+        the head's floor, `admitAppend` if supplied), through the same code the
+        read loop runs
+  - [x] A refused pre-check throws the same class the read-back verify would
+        have thrown, and nothing is written
+  - [x] The sealing sweep (`sealResourceLog`) is covered by the same pre-check
+  - [x] `createResourceLog` verifies the genesis as a one-entry log before
+        `store.create`, and a refusal against an existing log still adopts the
+        winner (design doc section 4, lost-race rows)
+  - [x] Read-back confirmation is unchanged (the pre-check is best effort; the
+        anchor floor can still go stale before the write lands)
+  - [x] wallet-core's `rosterLogStore.replace` and `create` call the export
+        (each write site in design doc section 3 handled or exempted)
+
+`src/append.ts:166`, `src/entry.ts:55`. `anchoredVerificationMethod` stamps
+`versionIds[last]` unconditionally and the entry is written straight after
+`buildResourceLogEntry`. A client whose key was removed at the latest controller
+version (or the sealing sweep driven by it) writes durably, `confirmAppend`'s
+re-verify then fails, and every future reader fails from genesis because the
+entry cannot be removed. wallet-core's `rosterLogStore.replace` duplicates only
+the ladder-license half pre-write and its comment names exactly this hazard.
