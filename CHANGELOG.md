@@ -1,5 +1,29 @@
 # @interop/vh-resource-log Changelog
 
+## 0.3.0 - TBD
+
+### Added
+
+- `verifyResourceLogAppend`: an exported pre-write verification pass. It
+  verifies a candidate entry as the reader would, as the next entry of a
+  verified head, for consumers with their own write path.
+
+### Changed
+
+- **BREAKING**: `appendResourceLog` (and the sealing sweep through it) now
+  verifies every built entry pre-write on every compare-and-swap attempt, and
+  `createResourceLog` verifies the genesis as a one-entry log before
+  `store.create` (falling through to lost-race adoption when a log already
+  exists). Refusals that used to surface after the write, from read-back, now
+  surface before it, and nothing is written. The `admitAppend` hook contract
+  gains an obligation: it is also consulted pre-write on the writer's candidate,
+  is called on entries that are never written, is called twice for a successful
+  append, and must be side-effect-free. A consumer with its own write path must
+  call the new export to be covered. No error name changes.
+- `VerifiedResourceLog` is now also an input, to the new export, so adding a
+  required field to it is henceforth a breaking change for any consumer that
+  constructs one.
+
 ## 0.2.0 - 2026-08-22
 
 ### Changed

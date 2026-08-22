@@ -5,8 +5,11 @@
  * The append path (App Connect spec `#log-append`): read the full log and
  * verify it (an entry is never built on an unverified head), build the new
  * entry against the verified head anchored at the writer's current verified
- * controller head, write compare-and-swapped on the read's validator, and on
- * conflict re-read, re-verify, rebase, retry. A write acknowledgement is a
+ * controller head, verify the candidate as a reader would before sending it
+ * (`verifyResourceLogAppend`: a refused entry poisons the log for every
+ * reader and cannot be removed, so the writer refuses first), write
+ * compare-and-swapped on the read's validator, and on conflict re-read,
+ * re-verify, rebase, retry. A write acknowledgement is a
  * promise, not a fact: every append is confirmed by reading the log back and
  * re-verifying the extended history before the append -- or any ceremony step
  * gated on it -- is treated as durable. The chain-head pin advances on every
@@ -22,7 +25,11 @@ import {
   type ResourceLogSigner
 } from './entry.js'
 import type { ResourceLogPinStore } from './pin.js'
-import { verifyResourceLog, type VerifiedResourceLog } from './verify.js'
+import {
+  verifyResourceLog,
+  verifyResourceLogAppend,
+  type VerifiedResourceLog
+} from './verify.js'
 
 /**
  * Reads and fully verifies a log through the store seam, advancing the
@@ -73,13 +80,19 @@ export async function readResourceLog({
 }
 
 /**
- * Appends one state change: verify, build against the verified head, CAS,
- * rebase-and-retry on conflict, confirm by read-back. `buildState` is the
- * rebase hook -- it is called with the current verified log on every attempt
- * and returns the full next state built on THAT head's state (or `null` to
- * signal the change is already present, making a re-run converge instead of
- * duplicating an entry). Refuses a log whose verified head is a terminal
- * handover entry ({@link ResourceLogClosedError}).
+ * Appends one state change: verify, build against the verified head, verify
+ * the candidate pre-write, CAS, rebase-and-retry on conflict, confirm by
+ * read-back. `buildState` is the rebase hook -- it is called with the current
+ * verified log on every attempt and returns the full next state built on
+ * THAT head's state (or `null` to signal the change is already present,
+ * making a re-run converge instead of duplicating an entry). Refuses a log
+ * whose verified head is a terminal handover entry
+ * ({@link ResourceLogClosedError}). Before `store.append`, every attempt's
+ * built entry goes through {@link verifyResourceLogAppend} against the head
+ * it was built on: a candidate the reader would refuse throws that refusal's
+ * class (`ResourceLogIntegrityError`, or the `admitAppend` hook's own
+ * class) and nothing is written. Read-back confirmation is unchanged and
+ * remains the only evidence that the append is durable.
  *
  * @param options {object}
  * @param options.store {ResourceLogStore}
@@ -118,9 +131,7 @@ export async function appendResourceLog({
   buildState: (
     verified: VerifiedResourceLog
   ) =>
-    | Promise<ResourceLogEntry['state'] | null>
-    | ResourceLogEntry['state']
-    | null
+    Promise<ResourceLogEntry['state'] | null> | ResourceLogEntry['state'] | null
   versionTime?: string
   maxAttempts?: number
 }): Promise<VerifiedResourceLog> {
@@ -162,6 +173,10 @@ export async function appendResourceLog({
       signer,
       versionTime
     })
+    // The pre-write pass: refuse what read-back would refuse, before the
+    // host holds an entry no reader accepts. A refusal is its own cause; an
+    // earlier attempt's lost race is not attached.
+    await verifyResourceLogAppend({ entry, controller, head: verified })
     try {
       await store.append(entry, { ifMatch: etag })
     } catch (err) {
@@ -197,7 +212,11 @@ export async function appendResourceLog({
  * adopts the winner's log (the create is CAS, never clobbering): the served
  * log is verified and pinned, and the caller reconciles its intended state
  * through an ordinary {@link appendResourceLog}. First contact is where the
- * pin is established, so the pin store is written either way.
+ * pin is established, so the pin store is written either way. Before
+ * `store.create`, the built genesis is verified as a one-entry log (the
+ * membership and anchor rules at the genesis's anchor, no pin); a refusal
+ * throws `ResourceLogIntegrityError` and creates nothing, unless a log
+ * already exists, in which case the lost-race branch adopts it.
  *
  * @param options {object}
  * @param options.store {ResourceLogStore}
@@ -244,12 +263,38 @@ export async function createResourceLog({
   })
   let created = true
   try {
-    await store.create(genesis)
+    // The candidate is not served history, so no pin: continuity against
+    // the held pin belongs to the read-back below.
+    await verifyResourceLog({
+      entries: [genesis],
+      controller,
+      expectedMethod: method,
+      pin: null
+    })
   } catch (err) {
-    if (!isResourceLogConflictError(err)) {
+    // Matched by name, the cross-package rule. Only the Integrity class falls
+    // through to adoption: a refused genesis against an existing log is a
+    // lost race for a client that can read but not write, and the winner's
+    // log is what it should hold. Any other throw (a port bug) propagates
+    // with no read, so it cannot turn "create my genesis" into "adopt
+    // whatever the host serves".
+    if (!(err instanceof Error && err.name === 'ResourceLogIntegrityError')) {
+      throw err
+    }
+    if ((await store.read()) === null) {
       throw err
     }
     created = false
+  }
+  if (created) {
+    try {
+      await store.create(genesis)
+    } catch (err) {
+      if (!isResourceLogConflictError(err)) {
+        throw err
+      }
+      created = false
+    }
   }
   const current = created
     ? await confirmAppend({ store, entry: genesis })

@@ -20,7 +20,9 @@
  * registers here), and the log's side is the verified head's effective anchor
  * ({@link VerifiedResourceLog}`.headAnchorIndex`). "Sealed" is simply "head
  * anchor at or past the removal", so the backstop append is idempotent and a
- * torn sweep is finished by a naive re-run.
+ * torn sweep is finished by a naive re-run by any surviving member (the
+ * append path's pre-write pass refuses a sweep driven by the removed member
+ * before anything is written).
  */
 import type { ResourceLogStore } from './store.js'
 import { appendResourceLog, readResourceLog } from './append.js'

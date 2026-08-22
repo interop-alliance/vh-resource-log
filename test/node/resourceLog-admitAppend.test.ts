@@ -9,6 +9,8 @@
  * hook -- and the hook runs after the entry's proofs have verified, outside
  * the integrity wrap: a forged signature is refused as the integrity class
  * whatever the hook would have said, and a hook throw keeps its own class.
+ * The same rules hold on the write path, where the pre-write pass consults
+ * the hook on the writer's own candidate (`resourceLog-append.test.ts`).
  */
 import { describe, expect, it } from 'vitest'
 import {

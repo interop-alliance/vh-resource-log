@@ -40,7 +40,7 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ### VRL-2: Pre-write admission pass in `appendResourceLog`
 
-- status: todo
+- status: in-progress
 - priority: high
 - labels: append, admission, poisoning
 - verdict: confirmed
@@ -65,17 +65,17 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 - design: designs/VRL-2-pre-write-admission.md
 - design-approved: 2026-08-22
 - acceptance:
-  - [ ] Before `store.append`, the freshly built entry is verified as the reader
+  - [x] Before `store.append`, the freshly built entry is verified as the reader
         would verify it at its ordinal (shape, chain, proofs, authorization at
         the head's floor, `admitAppend` if supplied), through the same code the
         read loop runs
-  - [ ] A refused pre-check throws the same class the read-back verify would
+  - [x] A refused pre-check throws the same class the read-back verify would
         have thrown, and nothing is written
-  - [ ] The sealing sweep (`sealResourceLog`) is covered by the same pre-check
-  - [ ] `createResourceLog` verifies the genesis as a one-entry log before
+  - [x] The sealing sweep (`sealResourceLog`) is covered by the same pre-check
+  - [x] `createResourceLog` verifies the genesis as a one-entry log before
         `store.create`, and a refusal against an existing log still adopts the
         winner (design doc section 4, lost-race rows)
-  - [ ] Read-back confirmation is unchanged (the pre-check is best effort; the
+  - [x] Read-back confirmation is unchanged (the pre-check is best effort; the
         anchor floor can still go stale before the write lands)
   - [ ] wallet-core's `rosterLogStore.replace` and `create` call the export
         (each write site in design doc section 3 handled or exempted)

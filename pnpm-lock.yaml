@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@interop/did-method-webvh':
-        specifier: ^5.5.0
-        version: 5.5.0
+        specifier: ^5.5.1
+        version: 5.5.1
       '@interop/storage-core':
         specifier: ^0.9.1
         version: 0.9.1
@@ -156,8 +156,8 @@ packages:
     resolution: {integrity: sha512-KD/AFAfnsDVa7Kz3yzx0t/L1A+GlFI0RahbtXsfzcznRlN63fPZCJ6W3C+unPyksCYsILZIHcOFFJkZe6eKtkw==}
     engines: {node: '>=24.0'}
 
-  '@interop/did-method-webvh@5.5.0':
-    resolution: {integrity: sha512-6V8qyXK8yrpB70ShdvOokgP+L/zsKtXCQbcg+ifU2YGgMkTCrx4Y0eneCr/PmDm6p9h8L+s+jfYJdkacNMYbzg==}
+  '@interop/did-method-webvh@5.5.1':
+    resolution: {integrity: sha512-SEoifXSP/d9CZ8qjM1S2uswTdh4G1HVvxi7bKt3OhjglX8v87l7Oq1tV/XYCfRyaDBs9dW7m9CH4GdQIA+KRRA==}
     engines: {node: '>=22'}
 
   '@interop/ed25519-verification-key@8.0.4':
@@ -650,9 +650,6 @@ packages:
   json-buffer@3.0.1:
     resolution: {integrity: sha512-4bV5BfR2mqfQTJm+V5tPPdf+ZpuhiIvTuAB5g8kcrXOZpTT/QwwVRWBywX1ozr6lEuPdbHxwaJlm9G6mI2sfSQ==}
 
-  json-canonicalize@2.0.0:
-    resolution: {integrity: sha512-yyrnK/mEm6Na3ChbJUWueXdapueW0p380RUyTW87XGb1ww8l8hU0pRrGC3vSWHe9CxrbPHX2fGUOZpNiHR0IIg==}
-
   json-canonicalize@3.0.0:
     resolution: {integrity: sha512-PW21BtLiKRV7gJcT8jf2X4UNN2AF4c1TYEVug1wAWRQSGBJj7fL+v4NgOkIo54SCBPFDyqzMcOJNhjwywCIBuw==}
     engines: {node: '>=8.5'}
@@ -1123,13 +1120,13 @@ snapshots:
     dependencies:
       '@scure/base': 2.3.0
 
-  '@interop/did-method-webvh@5.5.0':
+  '@interop/did-method-webvh@5.5.1':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
       '@noble/curves': 2.3.0
       '@noble/hashes': 2.3.0
       '@scure/base': 2.3.0
-      json-canonicalize: 2.0.0
+      json-canonicalize: 3.0.0
 
   '@interop/ed25519-verification-key@8.0.4':
     dependencies:
@@ -1596,8 +1593,6 @@ snapshots:
   js-tokens@10.0.0: {}
 
   json-buffer@3.0.1: {}
-
-  json-canonicalize@2.0.0: {}
 
   json-canonicalize@3.0.0: {}
 

@@ -16,7 +16,9 @@
  * proof of the entry has verified, outside the integrity wrap: a forged
  * signature is refused as the integrity class whatever the hook would have
  * said, and a hook throw keeps its own class so callers can tell a refused
- * admission from a corrupt log.
+ * admission from a corrupt log. The per-entry checks are shared with
+ * `verifyResourceLogAppend`, the write path's pre-write pass over a candidate
+ * entry, so a writer refuses exactly what a reader would refuse.
  */
 import {
   buildVersionId,
@@ -33,6 +35,7 @@ import type {
 } from '@interop/storage-core'
 import type { ResourceLogController } from './controller.js'
 import {
+  ResourceLogClosedError,
   ResourceLogContinuityError,
   ResourceLogIntegrityError
 } from './errors.js'
@@ -62,6 +65,11 @@ const ENTRY_MEMBERS = [
  * controller's `versionIds` (`null` on an unversioned controller, whose
  * entries carry no anchors); the sealing sweep compares it against the
  * controller's latest membership change.
+ *
+ * Also an input: `verifyResourceLogAppend` takes the value as `head` and
+ * reads `entries`, `head`, `headAnchorIndex`, and `terminal` as one
+ * consistent record. Pass it as returned; a caller-built literal is out of
+ * contract.
  */
 export interface VerifiedResourceLog {
   entries: ResourceLogEntry[]
@@ -324,6 +332,235 @@ function parseAnchoredVm(
 }
 
 /**
+ * Recomputes one entry's hash from its predecessor-substituted input and
+ * checks the entry's `versionId` against it (the chain step; never a stated
+ * head).
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}
+ * @param options.index {number}   the entry's 0-based position
+ * @param options.predecessorVersionId {string}   the predecessor's
+ *   `versionId` (the SCID for the genesis entry)
+ * @returns {Promise<void>}
+ */
+async function checkEntryChain({
+  entry,
+  index,
+  predecessorVersionId
+}: {
+  entry: ResourceLogEntry
+  index: number
+  predecessorVersionId: string
+}): Promise<void> {
+  const entryHash = await deriveHash(hashInputOf(entry, predecessorVersionId))
+  if (entry.versionId !== buildVersionId(index + 1, entryHash)) {
+    throw new ResourceLogIntegrityError(
+      `Resource log entry ${index + 1} does not hash-chain to its ` +
+        `predecessor.`
+    )
+  }
+}
+
+/**
+ * The controller's `versionId` list as an anchor-to-index map. First index
+ * wins on a repeated `versionId`; the port requires the list to be distinct,
+ * so the rule only matters for a view that breaks its precondition.
+ *
+ * @param controller {ResourceLogController}
+ * @returns {Map<string, number>}
+ */
+function anchorIndexesOf(
+  controller: ResourceLogController
+): Map<string, number> {
+  const anchorIndexes = new Map<string, number>()
+  for (const [index, versionId] of controller.versionIds.entries()) {
+    if (!anchorIndexes.has(versionId)) {
+      anchorIndexes.set(versionId, index)
+    }
+  }
+  return anchorIndexes
+}
+
+/**
+ * Checks the terminal-entry state rule: a handover changes no resource
+ * state, so the terminal entry's `state` canonicalizes equal to its
+ * predecessor's.
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}   the terminal entry
+ * @param options.predecessorState {ResourceLogEntry['state']}
+ */
+function checkTerminalState({
+  entry,
+  predecessorState
+}: {
+  entry: ResourceLogEntry
+  predecessorState: ResourceLogEntry['state']
+}): void {
+  if (
+    canonicalizeStrict(entry.state) !== canonicalizeStrict(predecessorState)
+  ) {
+    throw new ResourceLogIntegrityError(
+      "The terminal handover entry's state differs from its " +
+        "predecessor's (a handover changes no resource state)."
+    )
+  }
+}
+
+/**
+ * Verifies one entry's proofs and authorization against the anchor floor its
+ * predecessors established (the per-entry body of verification steps 4 and
+ * 5): every proof through the kernel, the external-authorization rule per
+ * proof (controller DID, anchor presence, anchor monotonicity against the
+ * floor, `assertionMethod` membership at the anchored version), then the
+ * controller's `admitAppend` hook per proof for every entry past genesis.
+ * Resolves the entry's effective anchor index, the floor for the next entry.
+ * Reads `entry` without mutating it.
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}
+ * @param options.index {number}   the entry's 0-based position
+ * @param options.controller {ResourceLogController}
+ * @param options.anchorFloor {number}   the predecessors' effective anchor
+ * @param options.anchorIndexes {Map<string, number>}   from
+ *   {@link anchorIndexesOf}
+ * @param options.versioned {boolean}   whether the controller is versioned
+ * @returns {Promise<number>}
+ */
+async function verifyEntryAgainstFloor({
+  entry,
+  index,
+  controller,
+  anchorFloor,
+  anchorIndexes,
+  versioned
+}: {
+  entry: ResourceLogEntry
+  index: number
+  controller: ResourceLogController
+  anchorFloor: number
+  anchorIndexes: Map<string, number>
+  versioned: boolean
+}): Promise<number> {
+  const ordinal = index + 1
+  let entryAnchorIndex = anchorFloor
+  // The admission hook's per-proof inputs, recorded during authorization
+  // and drained only after every proof of the entry has verified (below).
+  const admissions: Array<
+    Parameters<NonNullable<ResourceLogController['admitAppend']>>[0]
+  > = []
+  // The kernel calls `authorize` before `resolveVM` for the same proof, so
+  // the parse throws from `authorize` exactly as it did when both parsed.
+  const parsed = new Map<string, ReturnType<typeof parseAnchoredVm>>()
+  const parseOnce = (
+    verificationMethod: string
+  ): ReturnType<typeof parseAnchoredVm> => {
+    let result = parsed.get(verificationMethod)
+    if (result === undefined) {
+      result = parseAnchoredVm(verificationMethod, ordinal)
+      parsed.set(verificationMethod, result)
+    }
+    return result
+  }
+  const authorize = async (proof: {
+    verificationMethod?: string
+  }): Promise<void> => {
+    const { did, anchor, keyMultibase } = parseOnce(
+      proof.verificationMethod ?? ''
+    )
+    if (did !== controller.did) {
+      throw new ResourceLogIntegrityError(
+        `Resource log entry ${ordinal} is signed under a different ` +
+          `controller than this log's account.`
+      )
+    }
+    if (versioned && anchor === undefined) {
+      throw new ResourceLogIntegrityError(
+        `Resource log entry ${ordinal} carries no entry anchor against a ` +
+          `version-resolvable controller.`
+      )
+    }
+    if (!versioned && anchor !== undefined) {
+      throw new ResourceLogIntegrityError(
+        `Resource log entry ${ordinal} anchors a version on an unversioned ` +
+          `controller.`
+      )
+    }
+    let anchorIndex = 0
+    if (anchor !== undefined) {
+      const known = anchorIndexes.get(anchor)
+      if (known === undefined) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} anchors an unknown controller ` +
+            `document version.`
+        )
+      }
+      anchorIndex = known
+      if (anchorIndex < anchorFloor) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} anchors behind its predecessor ` +
+            `(anchors must be monotone along the log).`
+        )
+      }
+    }
+    const assertionKeys = await controller.assertionKeysAt(anchor)
+    if (!assertionKeys.has(keyMultibase)) {
+      throw new ResourceLogIntegrityError(
+        `Resource log entry ${ordinal} is signed by a key the controller ` +
+          `document does not list under assertionMethod at the anchored ` +
+          `version.`
+      )
+    }
+    // Record the admission input for every entry past genesis; the hook
+    // itself runs after the kernel call. The floor at this point is still
+    // the previous entries' effective anchor -- the verified head this
+    // append extended -- and nothing assigns it before the drain.
+    if (index > 0 && controller.admitAppend !== undefined) {
+      admissions.push({
+        ordinal,
+        keyMultibase,
+        ...(anchor === undefined ? {} : { anchor }),
+        anchorIndex: versioned ? anchorIndex : null,
+        headAnchorIndex: anchorFloor
+      })
+    }
+    entryAnchorIndex = Math.max(entryAnchorIndex, anchorIndex)
+  }
+  try {
+    // The wire proof type narrows the kernel's (fixed purpose, optional
+    // created); the shape check already enforced the profile form.
+    await verifyEntryProofs(entry as Parameters<typeof verifyEntryProofs>[0], {
+      verifier: defaultWebvhLogVerifier,
+      authorize,
+      resolveVM: async verificationMethod => ({
+        publicKeyMultibase: parseOnce(verificationMethod).keyMultibase
+      })
+    })
+  } catch (err) {
+    if (err instanceof ResourceLogIntegrityError) {
+      throw err
+    }
+    throw new ResourceLogIntegrityError(
+      `Resource log entry ${ordinal} failed proof verification.`,
+      { cause: err }
+    )
+  }
+  // The admission hook: controller-domain append policy (wallet-core's
+  // ceremony-tail license on ladder-signed appends), consulted per proof
+  // in array order, after membership passed and every proof of the entry
+  // verified, and before the anchor floor advances. Signature first, so
+  // the hook never sees input from an unverified proof and a forged entry
+  // is refused as the integrity class even where the hook would also
+  // refuse it. The call sits outside the wrap above: a hook throw keeps
+  // its class -- an admission refusal is not evidence of a doctored log,
+  // and neither is a hook-internal bug.
+  for (const admission of admissions) {
+    await controller.admitAppend?.(admission)
+  }
+  return entryAnchorIndex
+}
+
+/**
  * Runs the profile's full verification over a parsed log, in order: parse
  * shape, genesis (SCID recomputation, format identifier), chain-hash
  * recomputation, per-entry proofs, the external-authorization rule with
@@ -398,146 +635,24 @@ export async function verifyResourceLog({
   // input; never accept a stated head.
   let predecessorVersionId = scid
   for (const [index, entry] of entries.entries()) {
-    const entryHash = await deriveHash(hashInputOf(entry, predecessorVersionId))
-    if (entry.versionId !== buildVersionId(index + 1, entryHash)) {
-      throw new ResourceLogIntegrityError(
-        `Resource log entry ${index + 1} does not hash-chain to its ` +
-          `predecessor.`
-      )
-    }
+    await checkEntryChain({ entry, index, predecessorVersionId })
     predecessorVersionId = entry.versionId
   }
 
   // 4 + 5. Proofs and authorization, entry by entry, with anchor
   // monotonicity carried along the log.
   const versioned = controller.versionIds.length > 0
-  const anchorIndexes = new Map<string, number>()
-  for (const [index, versionId] of controller.versionIds.entries()) {
-    if (!anchorIndexes.has(versionId)) {
-      anchorIndexes.set(versionId, index)
-    }
-  }
+  const anchorIndexes = anchorIndexesOf(controller)
   let anchorFloor = 0
   for (const [index, entry] of entries.entries()) {
-    const ordinal = index + 1
-    let entryAnchorIndex = anchorFloor
-    // The admission hook's per-proof inputs, recorded during authorization
-    // and drained only after every proof of the entry has verified (below).
-    const admissions: Array<
-      Parameters<NonNullable<ResourceLogController['admitAppend']>>[0]
-    > = []
-    // The kernel calls `authorize` before `resolveVM` for the same proof, so
-    // the parse throws from `authorize` exactly as it did when both parsed.
-    const parsed = new Map<string, ReturnType<typeof parseAnchoredVm>>()
-    const parseOnce = (
-      verificationMethod: string
-    ): ReturnType<typeof parseAnchoredVm> => {
-      let result = parsed.get(verificationMethod)
-      if (result === undefined) {
-        result = parseAnchoredVm(verificationMethod, ordinal)
-        parsed.set(verificationMethod, result)
-      }
-      return result
-    }
-    const authorize = async (proof: {
-      verificationMethod?: string
-    }): Promise<void> => {
-      const { did, anchor, keyMultibase } = parseOnce(
-        proof.verificationMethod ?? ''
-      )
-      if (did !== controller.did) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} is signed under a different ` +
-            `controller than this log's account.`
-        )
-      }
-      if (versioned && anchor === undefined) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} carries no entry anchor against a ` +
-            `version-resolvable controller.`
-        )
-      }
-      if (!versioned && anchor !== undefined) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} anchors a version on an unversioned ` +
-            `controller.`
-        )
-      }
-      let anchorIndex = 0
-      if (anchor !== undefined) {
-        const known = anchorIndexes.get(anchor)
-        if (known === undefined) {
-          throw new ResourceLogIntegrityError(
-            `Resource log entry ${ordinal} anchors an unknown controller ` +
-              `document version.`
-          )
-        }
-        anchorIndex = known
-        if (anchorIndex < anchorFloor) {
-          throw new ResourceLogIntegrityError(
-            `Resource log entry ${ordinal} anchors behind its predecessor ` +
-              `(anchors must be monotone along the log).`
-          )
-        }
-      }
-      const assertionKeys = await controller.assertionKeysAt(anchor)
-      if (!assertionKeys.has(keyMultibase)) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} is signed by a key the controller ` +
-            `document does not list under assertionMethod at the anchored ` +
-            `version.`
-        )
-      }
-      // Record the admission input for every entry past genesis; the hook
-      // itself runs after the kernel call. The floor at this point is still
-      // the previous entries' effective anchor -- the verified head this
-      // append extended -- and nothing assigns it before the drain.
-      if (index > 0 && controller.admitAppend !== undefined) {
-        admissions.push({
-          ordinal,
-          keyMultibase,
-          ...(anchor === undefined ? {} : { anchor }),
-          anchorIndex: versioned ? anchorIndex : null,
-          headAnchorIndex: anchorFloor
-        })
-      }
-      entryAnchorIndex = Math.max(entryAnchorIndex, anchorIndex)
-    }
-    try {
-      // The wire proof type narrows the kernel's (fixed purpose, optional
-      // created); the shape check above already enforced the profile form.
-      await verifyEntryProofs(
-        entry as Parameters<typeof verifyEntryProofs>[0],
-        {
-          verifier: defaultWebvhLogVerifier,
-          authorize,
-          resolveVM: async verificationMethod => ({
-            publicKeyMultibase: parseOnce(verificationMethod).keyMultibase
-          })
-        }
-      )
-    } catch (err) {
-      if (err instanceof ResourceLogIntegrityError) {
-        throw err
-      }
-      throw new ResourceLogIntegrityError(
-        `Resource log entry ${ordinal} failed proof verification.`,
-        { cause: err }
-      )
-    }
-    // The admission hook: controller-domain append policy (wallet-core's
-    // ceremony-tail license on ladder-signed appends), consulted per proof
-    // in array order, after membership passed and every proof of the entry
-    // verified, and before the anchor floor advances. Signature first, so
-    // the hook never sees input from an unverified proof and a forged entry
-    // is refused as the integrity class even where the hook would also
-    // refuse it. The call sits outside the wrap above: a hook throw keeps
-    // its class -- an admission refusal is not evidence of a doctored log,
-    // and neither is a hook-internal bug.
-    for (const admission of admissions) {
-      await controller.admitAppend?.(admission)
-    }
-    anchorFloor = entryAnchorIndex
+    anchorFloor = await verifyEntryAgainstFloor({
+      entry,
+      index,
+      controller,
+      anchorFloor,
+      anchorIndexes,
+      versioned
+    })
   }
 
   // 6. Termination: a terminal entry closes the log -- it must be last, must
@@ -552,15 +667,10 @@ export async function verifyResourceLog({
         'The resource log continues past a terminal handover entry.'
       )
     }
-    const predecessorState = entries[index - 1]!.state
-    if (
-      canonicalizeStrict(entry.state) !== canonicalizeStrict(predecessorState)
-    ) {
-      throw new ResourceLogIntegrityError(
-        "The terminal handover entry's state differs from its " +
-          "predecessor's (a handover changes no resource state)."
-      )
-    }
+    checkTerminalState({
+      entry,
+      predecessorState: entries[index - 1]!.state
+    })
     terminal = (
       entry.parameters as { nextLog: { method: string; scid: string } }
     ).nextLog
@@ -614,6 +724,83 @@ export async function verifyResourceLog({
     headAnchorIndex: versioned ? anchorFloor : null,
     terminal,
     previousLog: genesisParameters.previousLog ?? null
+  }
+}
+
+/**
+ * The write path's pre-write pass: verifies `entry` exactly as a reader would
+ * verify it as the next entry of `head`, before anything is written, so an
+ * honest writer never sends an entry it would itself refuse on read-back (one
+ * refused entry poisons the whole log for every reader, and an appended entry
+ * cannot be removed). In order: a closed head is refused with
+ * {@link ResourceLogClosedError}; a head verified under an unversioned view
+ * handed a versioned `controller`, or the reverse, is refused as
+ * {@link ResourceLogIntegrityError} (the head's own entries would fail the
+ * anchor-presence rule on read-back); then the entry's shape at its would-be
+ * ordinal, its hash chain to the head, its proofs, the authorization rule at
+ * the head's anchor floor, the `admitAppend` hook per proof, and, for a
+ * terminal candidate, the state-equality rule. Every refusal is the class
+ * and message the read path throws, from the same code; a hook refusal keeps
+ * the hook's own class. The pass does not mutate `entry` (it is the object
+ * the store will serialize).
+ *
+ * Preconditions: `head` is the value {@link verifyResourceLog} (or
+ * `readResourceLog`) returned for the log the CAS validator came from, passed
+ * as returned; and the view it was verified against has a `versionIds` list
+ * that is a prefix of `controller.versionIds` (an append-only controller log
+ * and a resolver that does not regress), since `head.headAnchorIndex` indexes
+ * that list. A staler `head` weakens the pass to best effort in both
+ * directions; read-back still decides. This is self-protection for the
+ * writer, not an authorization boundary, and it does not replace read-back
+ * confirmation.
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}   the candidate next entry
+ * @param options.controller {ResourceLogController}   the writer's verified
+ *   controller view, at or past the one `head` was verified with
+ * @param options.head {VerifiedResourceLog}   the verified log the candidate
+ *   extends
+ * @returns {Promise<void>}
+ */
+export async function verifyResourceLogAppend({
+  entry,
+  controller,
+  head
+}: {
+  entry: ResourceLogEntry
+  controller: ResourceLogController
+  head: VerifiedResourceLog
+}): Promise<void> {
+  if (head.terminal !== null) {
+    throw new ResourceLogClosedError({ nextLog: head.terminal })
+  }
+  const versioned = controller.versionIds.length > 0
+  if (versioned !== (head.headAnchorIndex !== null)) {
+    throw new ResourceLogIntegrityError(
+      versioned
+        ? 'The verified head was verified against an unversioned controller; ' +
+            'its anchorless entries would fail against this versioned view.'
+        : 'The verified head was verified against a versioned controller; ' +
+            'its anchored entries would fail against this unversioned view.'
+    )
+  }
+  const index = head.entries.length
+  checkEntryShape(entry, index)
+  await checkEntryChain({
+    entry,
+    index,
+    predecessorVersionId: head.head.versionId
+  })
+  await verifyEntryAgainstFloor({
+    entry,
+    index,
+    controller,
+    anchorFloor: head.headAnchorIndex ?? 0,
+    anchorIndexes: anchorIndexesOf(controller),
+    versioned
+  })
+  if (isTerminalResourceLogEntry(entry)) {
+    checkTerminalState({ entry, predecessorState: head.head.state })
   }
 }
 

@@ -10,16 +10,21 @@
  * - {@link ResourceLogIntegrityError} -- fabrication: the served log fails
  *   verification on its own terms (JSON Lines parse, entry shape, SCID, chain
  *   hashes, proofs, or the external-authorization rule). Whoever produced it
- *   could not make a log the account's clients would have made.
+ *   could not make a log the account's clients would have made. The same
+ *   class is thrown about the writer's own candidate entry when the
+ *   pre-write pass refuses it (never served, never written); its messages
+ *   stay reader-phrased, naming the candidate's would-be ordinal.
  * - {@link ResourceLogContinuityError} -- a served log that verifies but
  *   conflicts with what this client has already accepted: a rollback behind
  *   the chain-head pin, a fork off the pinned history, or an SCID/method
  *   switch outside a verified handover. The log may be internally consistent;
  *   it is not the continuation of the history this client pinned.
  * - {@link ResourceLogClosedError} -- an append refused because the verified
- *   head is a terminal handover entry. Not an attack: the log's own authors
- *   closed it, and a verifier of this profile must refuse to extend a closed
- *   log even though nothing currently emits terminal entries.
+ *   head is a terminal handover entry, thrown by `appendResourceLog` before
+ *   building and by `verifyResourceLogAppend` for a consumer's own write
+ *   path. Not an attack: the log's own authors closed it, and a verifier of
+ *   this profile must refuse to extend a closed log even though nothing
+ *   currently emits terminal entries.
  * - {@link LogNotConfirmedError} -- an acknowledged append that the read-back
  *   could not find in the served history. An acknowledgement is a promise,
  *   not a fact; until the read-back confirms, the append is not durable.
@@ -60,7 +65,11 @@
  * A served log failed verification: an unparseable body, malformed entries, a
  * non-verifying SCID, a broken hash chain, a failing proof, or a signer the
  * controller document does not back at the entry's anchored version.
- * Fabrication-class: refused as something no enrolled client produced.
+ * Fabrication-class: refused as something no enrolled client produced. Also
+ * thrown about the writer's own candidate entry when the pre-write pass
+ * (`verifyResourceLogAppend`, or the genesis pass in `createResourceLog`)
+ * refuses it: the entry was never served and is never written, and the
+ * message's ordinal is the candidate's would-be position.
  */
 export class ResourceLogIntegrityError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
@@ -110,7 +119,8 @@ export class ResourceLogContinuityError extends Error {
 /**
  * An append was refused because the log's verified head is a terminal
  * handover entry: the log is closed and names a successor, and this profile
- * forbids extending a history its authors have closed.
+ * forbids extending a history its authors have closed. Thrown by
+ * `appendResourceLog` and by `verifyResourceLogAppend`.
  */
 export class ResourceLogClosedError extends Error {
   nextLog: { method: string; scid: string }

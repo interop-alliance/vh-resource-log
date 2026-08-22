@@ -27,11 +27,12 @@ src/controller.ts  The controller-view port verification authorizes against,
 src/vmFragment.ts  The one fragment reader for verification-method ids
 src/entry.ts       Genesis (two-pass SCID) and next-entry builders + signing
 src/verify.ts      Full chain verification, terminal entries, continuity
-                   against the chain-head pin, the handover check
+                   against the chain-head pin, the handover check, and the
+                   pre-write pass verifyResourceLogAppend
 src/pin.ts         The chain-head pin port (ResourceLogHeadPin,
                    ResourceLogPinStore, resourceLogPinId, memory impl)
 src/append.ts      readResourceLog / appendResourceLog / createResourceLog
-                   (verify-build-CAS-rebase-confirm)
+                   (verify-build-verify-CAS-rebase-confirm)
 src/seal.ts        The sealing sweep (latestAssertionRemovalIndex,
                    sealResourceLog)
 src/testing.ts     The "./testing" subpath: fakeController, memoryLogStore
@@ -73,20 +74,28 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    (multi-proof entries are legal, so a per-entry call would admit an unadmitted
    proof in a later array position), after `assertionMethod` membership passes,
    after every proof of the entry has verified cryptographically, and before the
-   anchor floor advances, for every entry past genesis. The hook runs after the
-   kernel call, outside the integrity wrap, so a throw needs no capture and a
-   forged signature is refused as the integrity class whatever the hook would
-   have said (the hook never sees input from an unverified proof). The
-   obligation the seam creates: a controller port over a document that can list
-   ladder-shaped verification methods (any wallet account did:webvh document)
-   MUST supply the hook, carrying wallet-core's ceremony-tail license -- a bare
-   view does not lack ladder keys, it lacks the ability to recognize them, and a
-   hook-less read would admit the silent-rekey shape the license exists to
-   refuse.
+   anchor floor advances, for every entry past genesis. The hook is also
+   consulted on the writer's own candidate entry before the write
+   (`verifyResourceLogAppend`, run by `appendResourceLog` on every
+   compare-and-swap attempt), after the candidate's proofs verify. It is
+   therefore called on entries that then lose the race or are refused and never
+   written, and twice for a successful append (pre-write and on read-back) with
+   identical input. It must be a side-effect-free function of the controller
+   view and the input; a call is not evidence that an entry was or will be
+   written. The hook runs after the kernel call, outside the integrity wrap, so
+   a throw needs no capture and a forged signature is refused as the integrity
+   class whatever the hook would have said (the hook never sees input from an
+   unverified proof). The obligation the seam creates: a controller port over a
+   document that can list ladder-shaped verification methods (any wallet account
+   did:webvh document) MUST supply the hook, carrying wallet-core's
+   ceremony-tail license -- a bare view does not lack ladder keys, it lacks the
+   ability to recognize them, and a hook-less read would admit the silent-rekey
+   shape the license exists to refuse.
 7. **An acknowledged append is a promise, not a fact.** Every append and create
    is confirmed by reading the log back (`confirmAppend`) and re-verifying the
    extended history before the append -- or any ceremony step gated on it -- is
-   treated as durable.
+   treated as durable. The pre-write pass of invariant 11 is additive to this;
+   read-back confirmation stays the only evidence that an append is durable.
 8. **A stale compare-and-swap validator fails into the caller's rebase-and-retry
    loop**, never downgraded to an unconditional write. The conflict signal is
    the library-owned `ResourceLogConflictError`, minted by store adapters with
@@ -102,11 +111,30 @@ was-client and wallet-core depend on this library; nothing here depends on them.
 10. **Sealing is computed from durable state alone.** The membership change is
     read off the controller view and the log's side off the verified head's
     effective anchor, so the backstop append is idempotent and a torn sweep is
-    finished by a naive re-run. The sweep exists because an ordinary post-edit
-    write is the sealing append by construction; the gap is the run where no
-    such write happens (a rotation that no-ops because the retiree held no
-    current-epoch wrap), leaving the log's head still anchored pre-removal. The
-    wallet-side ceremonies that drive it stay in `@interop/wallet-core`.
+    finished by a naive re-run by any surviving member. The sweep exists because
+    an ordinary post-edit write is the sealing append by construction; the gap
+    is the run where no such write happens (a rotation that no-ops because the
+    retiree held no current-epoch wrap), leaving the log's head still anchored
+    pre-removal. A sweep that would write is refused pre-write when the sweeping
+    client is the removed member (invariant 11); the convergence branch, which
+    writes nothing, still runs before the pass. The wallet-side ceremonies that
+    drive it stay in `@interop/wallet-core`.
+11. **The write path refuses before the host does.** Before `store.append` or
+    `store.create`, the candidate entry is verified as the reader would verify
+    it at its ordinal (shape, hash chain to the head, proofs, the authorization
+    rule at the head's anchor floor, the `admitAppend` hook, the terminal-entry
+    rules), against a controller view at or past the one the head was verified
+    with, so an honest writer does not send an entry it would itself refuse on
+    read-back -- one refused entry rejects the whole log for every reader
+    (invariant 2) and an appended entry cannot be removed. A refusal throws the
+    class the read-back would have thrown, from the same code, and nothing is
+    written. On the create path a refused genesis against an existing log falls
+    through to lost-race adoption (the winner's log is verified and pinned), and
+    only the Integrity class falls through. This is self-protection, not an
+    authorization boundary: a removed member whose controller view is stale
+    still passes (invariant 5, the spec's revocation window), and a writer that
+    bypasses the library's write path is not constrained. It does not replace
+    read-back (invariant 7).
 
 ## Ownership heuristics
 
@@ -127,6 +155,10 @@ was-client and wallet-core depend on this library; nothing here depends on them.
   only through `admitAppend`.
 - Durable pin storage: the consuming apps (freewallet's session database, dcw's
   table row). Only the port and the in-memory implementation live here.
+- The pre-write verification of a candidate entry, closed-head refusal included,
+  is `verifyResourceLogAppend` in this library; a consumer with its own write
+  path (wallet-core's `rosterLogStore.replace`) calls it rather than re-deriving
+  any reader rule.
 
 ## Current State labels
 

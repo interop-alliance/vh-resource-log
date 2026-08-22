@@ -30,6 +30,14 @@
  */
 export interface ResourceLogController {
   did: string
+  /**
+   * The verified controller log's `versionId` list in order. Precondition:
+   * distinct entries, and append-only across resolutions -- a later view's
+   * list extends an earlier one's, never rewrites it -- because the
+   * verifier's anchor indexes (`headAnchorIndex`, the hook's
+   * `anchorIndex`) are positions in this list and are compared across views
+   * by the pre-write pass.
+   */
   versionIds: string[]
   /**
    * Resolves the `assertionMethod` public-key multibases at a controller-log
@@ -50,6 +58,15 @@ export interface ResourceLogController {
    * own error class, propagated intact by the verifier. The hook is not
    * called for any proof of an entry that fails verification; an
    * implementation must not depend on being called.
+   *
+   * The hook is also consulted on the writer's own candidate entry before
+   * the write (`verifyResourceLogAppend`, which `appendResourceLog` runs on
+   * every compare-and-swap attempt), after the candidate's proofs verify. It
+   * is therefore called on entries that then lose the race or are refused
+   * and never written, and twice for a successful append (pre-write and on
+   * read-back) with identical input. It must be a side-effect-free function
+   * of the controller view and the input; a call is not evidence that an
+   * entry was or will be written.
    *
    * The obligation the seam creates: a controller port over a document that
    * can list ladder-shaped verification methods (any wallet account
