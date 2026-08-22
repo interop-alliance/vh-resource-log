@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.1.2 - TBD
+
+### Changed
+
+- Update to latest `@types/*` and `prettier`.
+
 ## 0.1.1 - 2026-08-22
 
 ### Changed
