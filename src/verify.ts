@@ -34,6 +34,7 @@ import type {
   ResourceLogEntryProof
 } from '@interop/storage-core'
 import type { ResourceLogController } from './controller.js'
+import { resourceLogStateFault } from './entry.js'
 import {
   ResourceLogClosedError,
   ResourceLogContinuityError,
@@ -225,17 +226,13 @@ function checkEntryShape(entry: ResourceLogEntry, index: number): void {
       )
     }
   }
-  const state = entry.state
-  if (
-    state === null ||
-    typeof state !== 'object' ||
-    typeof (state as { type?: unknown }).type !== 'string'
-  ) {
+  const stateFault = resourceLogStateFault(entry.state)
+  if (stateFault === 'type') {
     throw new ResourceLogIntegrityError(
       `Resource log entry ${ordinal} has no state.type schema identifier.`
     )
   }
-  if ('history' in state) {
+  if (stateFault === 'history') {
     throw new ResourceLogIntegrityError(
       `Resource log entry ${ordinal} carries a history member inside its ` +
         `state (the profile reserves that member name).`

@@ -58,6 +58,34 @@ function anchoredVerificationMethod({
 }
 
 /**
+ * The profile's state-document rule, shared by the entry builders and the
+ * reader's shape check so the two cannot drift: a state must be a non-null
+ * object carrying a string `type` schema identifier, and must not carry the
+ * projection-only `history` member. Returns which rule a state breaks, or
+ * `undefined` for a conforming state. `null` and `undefined` (a JS caller's
+ * `buildState` returning nothing, or a missing member on the wire) are
+ * reported as `'type'`, not thrown at.
+ *
+ * @param state {unknown}
+ * @returns {'type' | 'history' | undefined}
+ */
+export function resourceLogStateFault(
+  state: unknown
+): 'type' | 'history' | undefined {
+  if (
+    state === null ||
+    typeof state !== 'object' ||
+    typeof (state as { type?: unknown }).type !== 'string'
+  ) {
+    return 'type'
+  }
+  if ('history' in state) {
+    return 'history'
+  }
+  return undefined
+}
+
+/**
  * Refuses a state document the profile forbids in an entry: one without a
  * `type` schema identifier, or one carrying the projection-only `history`
  * member.
@@ -65,12 +93,13 @@ function anchoredVerificationMethod({
  * @param state {ResourceLogEntry['state']}
  */
 function checkState(state: ResourceLogEntry['state']): void {
-  if (typeof (state as { type?: unknown }).type !== 'string') {
+  const fault = resourceLogStateFault(state)
+  if (fault === 'type') {
     throw new Error(
       'A resource log entry state must carry a type schema identifier.'
     )
   }
-  if ('history' in state) {
+  if (fault === 'history') {
     throw new Error(
       'A resource log entry state must not carry a history member (the ' +
         'profile reserves that member name).'

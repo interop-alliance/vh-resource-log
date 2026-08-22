@@ -1308,3 +1308,31 @@ describe('verifyResourceLogAppend', () => {
     expect(canonicalizeStrict(coSigned)).toBe(before)
   })
 })
+
+describe('entry builders refuse a state that is not a state document', () => {
+  it('refuses null and undefined with the misuse Error, not a TypeError', async () => {
+    const alice = await makeLogClient()
+    const controller = fakeController({
+      versions: [{ versionId: '1-v1', keys: [alice.signingKeyMultibase] }]
+    })
+    const { genesis } = await genesisHead(controller, alice)
+    for (const state of [null, undefined]) {
+      await expect(
+        buildResourceLogEntry({
+          head: genesis,
+          state: state as never,
+          controller,
+          signer: alice.logSigner
+        })
+      ).rejects.toThrow(/must carry a type schema identifier/)
+      await expect(
+        buildResourceLogGenesis({
+          state: state as never,
+          method: METHOD,
+          controller,
+          signer: alice.logSigner
+        })
+      ).rejects.toThrow(/must carry a type schema identifier/)
+    }
+  })
+})

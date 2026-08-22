@@ -138,3 +138,23 @@ header to `''`, which the guard passes, so `writeHeaders` emits a literal empty
 `If-Match` that a server may ignore (invariant 8 forbids an unconditional
 write). On the encrypted-collection codec path the same value 412s on all three
 CAS attempts instead.
+
+### VRL-12: Guard `checkState` against `null` and `undefined`
+
+- status: done (2026-08-22)
+- priority: low
+- labels: entry, robustness
+- verdict: confirmed
+- touches:
+  - shipped 2026-08-22: vh-resource-log `src/entry.ts` (`resourceLogStateFault`,
+    the shared rule), `src/verify.ts` (`checkEntryShape` calls it),
+    `test/node/resourceLog-append.test.ts`, CHANGELOG.md
+- acceptance:
+  - [x] `checkState(null)` and `checkState(undefined)` throw the intended misuse
+        `Error`, not a `TypeError`
+  - [x] `checkState` and `checkEntryShape`'s state rule share one predicate
+
+`src/entry.ts:68`, `src/verify.ts:219`. `typeof (state as ...).type` runs with
+no null guard; `append.ts:153` gates only on `state === null`, so a JS
+`buildState` returning `undefined` reaches it. `checkEntryShape` already has the
+guarded form of the same rule.

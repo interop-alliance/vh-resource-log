@@ -216,22 +216,6 @@ this repo.
 the real adapter JSON-serializes it to a string, so read-back verification fails
 only in production.
 
-### VRL-12: Guard `checkState` against `null` and `undefined`
-
-- status: todo
-- priority: low
-- labels: entry, robustness
-- verdict: confirmed
-- acceptance:
-  - [ ] `checkState(null)` and `checkState(undefined)` throw the intended misuse
-        `Error`, not a `TypeError`
-  - [ ] `checkState` and `checkEntryShape`'s state rule share one predicate
-
-`src/entry.ts:68`, `src/verify.ts:219`. `typeof (state as ...).type` runs with
-no null guard; `append.ts:153` gates only on `state === null`, so a JS
-`buildState` returning `undefined` reaches it. `checkEntryShape` already has the
-guarded form of the same rule.
-
 ### VRL-27: `readResourceLog` reports an absent log without consulting the pin
 
 - status: todo

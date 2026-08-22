@@ -6,6 +6,9 @@
 
 - `appendResourceLog` now treats an empty `etag` from `store.read` as no
   validator and refuses to write, instead of sending a blank `If-Match`.
+- The entry builders now refuse a `null` or `undefined` state with the intended
+  misuse `Error` instead of a `TypeError`. The builders and the reader's entry
+  shape check share one state-document rule.
 
 ## 0.3.0 - 2026-08-22
 
