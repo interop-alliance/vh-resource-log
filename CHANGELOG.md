@@ -13,6 +13,21 @@
 - Docs and code now call the verifier's running controller version the "head
   controller version" (was "version floor"); the ARCHITECTURE.md glossary entry
   is renamed. No API change.
+- **BREAKING**: an entry's proofs must all carry the same controller versionId
+  and be by distinct signing keys. A log whose entry carries divergent
+  controller versionIds or a repeated signing key is now refused from genesis as
+  `ResourceLogIntegrityError`; the client's held pin stays where it was, and
+  there is no in-library heal for that shape (only a hand-built log can carry
+  it). `assertionMethod` membership is checked at the entry's controller
+  versionId for every proof, once per entry, instead of at each proof's own. The
+  `admitAppend` hook input's `controllerVersionId` and `controllerVersionIndex`
+  are now the entry's controller version for every proof, and the input gains
+  `proofKeys`: every proof's signing-key multibase, distinct, in array order. A
+  consumer that constructs the hook input directly (rather than receiving it
+  from the library) must add `proofKeys`, and a hook must return the same
+  verdict regardless of `proofKeys` order, since the proof array is not
+  integrity-bound. The verifier now makes one `assertionKeysAt` call per entry
+  instead of one per proof.
 
 ### Fixed
 

@@ -6,11 +6,12 @@
  * `#log-verification`), end-to-end and fail-closed: entry-shape parse checks,
  * SCID recomputation, chain-hash recomputation (never a stated head), proof
  * verification through the did:webvh log kernel, the external-authorization
- * rule (controller versionId resolution against the independently verified
- * controller document, `assertionMethod` membership at the controller
- * version, controller-version monotonicity), the controller port's per-proof
- * `admitAppend` admission hook, terminal-entry recognition, and continuity
- * against the chain-head pin. Any failure rejects the LOG, not just the
+ * rule (one controller versionId per entry by distinct signing keys, resolved
+ * against the independently verified controller document; `assertionMethod`
+ * membership of every signing key at that version; controller-version
+ * monotonicity), the controller port's per-proof `admitAppend` admission
+ * hook, terminal-entry recognition, and continuity against the chain-head
+ * pin. Any failure rejects the LOG, not just the
  * failing entry, and nothing served -- a stated head, a digest, a count --
  * is ever accepted in place of recomputation. The admission hook runs after
  * the kernel call, once every proof of the entry has verified, outside the
@@ -409,15 +410,20 @@ function checkTerminalState({
 
 /**
  * Verifies one entry's proofs and authorization against the head controller
- * version its predecessors established (the per-entry body of verification steps 4 and
- * 5): every proof through the kernel, the external-authorization rule per
- * proof (controller DID, controller versionId presence, controller-version
- * monotonicity against that version, `assertionMethod` membership at the
- * controller version), then the controller's `admitAppend` hook per proof
- * for every entry past genesis. Resolves the entry's effective controller
- * version index, the head controller version for the next entry. Reads
- * `entry` without
- * mutating it.
+ * version its predecessors established (the per-entry body of verification
+ * steps 4 and 5). A pre-pass over the proof array first reduces the entry to
+ * one controller versionId by distinct signing keys: per proof, in array
+ * order, the controller DID matches, the controller versionId is present
+ * under a versioned controller and absent under an unversioned one, and the
+ * signing key has not appeared on an earlier proof of this entry; then, once
+ * per entry, every controller versionId equals the first proof's, that one
+ * names a known controller version at or past the head controller version
+ * (controller-version monotonicity), and the `assertionMethod` set at it is
+ * resolved once. Every proof then goes through the kernel, where its signing
+ * key is checked for membership in that set, and the controller's
+ * `admitAppend` hook runs per proof for every entry past genesis. Resolves
+ * the entry's controller version index, the head controller version for the
+ * next entry. Reads `entry` without mutating it.
  *
  * @param options {object}
  * @param options.entry {ResourceLogEntry}
@@ -446,14 +452,16 @@ async function verifyEntryAgainstHead({
   versioned: boolean
 }): Promise<number> {
   const ordinal = index + 1
-  let entryVersionIndex = headVersionIndex
   // The admission hook's per-proof inputs, recorded during authorization
   // and drained only after every proof of the entry has verified (below).
   const admissions: Array<
     Parameters<NonNullable<ResourceLogController['admitAppend']>>[0]
   > = []
-  // The kernel calls `authorize` before `resolveVM` for the same proof, so
-  // the parse throws from `authorize` exactly as it did when both parsed.
+  // Every proof's `verificationMethod` is parsed exactly once, by the
+  // pre-pass below; the kernel's `authorize` and `resolveVM` read the same
+  // map. A malformed DID URL therefore throws from the pre-pass, before any
+  // signature check. The map is keyed on the string and is only a cache:
+  // `proofKeys` is built from the array itself, one element per proof.
   const parsed = new Map<string, ReturnType<typeof parseVersionedVm>>()
   const parseOnce = (
     verificationMethod: string
@@ -465,49 +473,18 @@ async function verifyEntryAgainstHead({
     }
     return result
   }
+  // The entry's controller versionId (undefined on an unversioned
+  // controller), its index (0 when unversioned), the `assertionMethod` set
+  // at it, and every proof's signing key in array order -- all settled by
+  // the pre-pass before the kernel runs.
+  let entryVersionId: string | undefined
+  let entryVersionIndex = 0
+  let assertionKeys = new Set<string>()
+  const proofKeys: string[] = []
   const authorize = async (proof: {
     verificationMethod?: string
   }): Promise<void> => {
-    const { did, controllerVersionId, keyMultibase } = parseOnce(
-      proof.verificationMethod ?? ''
-    )
-    if (did !== controller.did) {
-      throw new ResourceLogIntegrityError(
-        `Resource log entry ${ordinal} is signed under a different ` +
-          `controller than this log's account.`
-      )
-    }
-    if (versioned && controllerVersionId === undefined) {
-      throw new ResourceLogIntegrityError(
-        `Resource log entry ${ordinal} carries no controller versionId ` +
-          `against a version-resolvable controller.`
-      )
-    }
-    if (!versioned && controllerVersionId !== undefined) {
-      throw new ResourceLogIntegrityError(
-        `Resource log entry ${ordinal} carries a controller versionId on an ` +
-          `unversioned controller.`
-      )
-    }
-    let controllerVersionIndex = 0
-    if (controllerVersionId !== undefined) {
-      const known = versionIndexes.get(controllerVersionId)
-      if (known === undefined) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} carries an unknown controller ` +
-            `document version.`
-        )
-      }
-      controllerVersionIndex = known
-      if (controllerVersionIndex < headVersionIndex) {
-        throw new ResourceLogIntegrityError(
-          `Resource log entry ${ordinal} carries a controller versionId ` +
-            `behind its predecessor (controller versionIds must be monotone ` +
-            `along the log).`
-        )
-      }
-    }
-    const assertionKeys = await controller.assertionKeysAt(controllerVersionId)
+    const { keyMultibase } = parseOnce(proof.verificationMethod ?? '')
     if (!assertionKeys.has(keyMultibase)) {
       throw new ResourceLogIntegrityError(
         `Resource log entry ${ordinal} is signed by a key the controller ` +
@@ -524,14 +501,86 @@ async function verifyEntryAgainstHead({
       admissions.push({
         ordinal,
         keyMultibase,
-        ...(controllerVersionId === undefined ? {} : { controllerVersionId }),
-        controllerVersionIndex: versioned ? controllerVersionIndex : null,
-        headControllerVersionIndex: headVersionIndex
+        ...(entryVersionId === undefined
+          ? {}
+          : { controllerVersionId: entryVersionId }),
+        controllerVersionIndex: versioned ? entryVersionIndex : null,
+        headControllerVersionIndex: headVersionIndex,
+        proofKeys: [...proofKeys]
       })
     }
-    entryVersionIndex = Math.max(entryVersionIndex, controllerVersionIndex)
   }
   try {
+    // The pre-pass: the whole-entry view the kernel's per-proof loop never
+    // has. It reads parsed DID URLs only, so a proof array a host has
+    // reordered, duplicated, or deleted from (the array is outside the hash
+    // and every signature, and a strict non-empty subset of an entry's
+    // proofs still verifies) is refused or accepted on its key set before
+    // any signature is checked.
+    for (const proof of entry.proof) {
+      const { did, controllerVersionId, keyMultibase } = parseOnce(
+        proof.verificationMethod
+      )
+      if (did !== controller.did) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} is signed under a different ` +
+            `controller than this log's account.`
+        )
+      }
+      if (versioned && controllerVersionId === undefined) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} carries no controller versionId ` +
+            `against a version-resolvable controller.`
+        )
+      }
+      if (!versioned && controllerVersionId !== undefined) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} carries a controller versionId on ` +
+            `an unversioned controller.`
+        )
+      }
+      if (proofKeys.includes(keyMultibase)) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} carries two proofs by one signing ` +
+            `key.`
+        )
+      }
+      proofKeys.push(keyMultibase)
+    }
+    entryVersionId = parseOnce(
+      entry.proof[0]!.verificationMethod
+    ).controllerVersionId
+    if (
+      entry.proof.some(
+        proof =>
+          parseOnce(proof.verificationMethod).controllerVersionId !==
+          entryVersionId
+      )
+    ) {
+      throw new ResourceLogIntegrityError(
+        `Resource log entry ${ordinal} carries proofs that disagree on the ` +
+          `entry's controller versionId (all proofs of an entry must carry ` +
+          `the same controller version).`
+      )
+    }
+    if (entryVersionId !== undefined) {
+      const known = versionIndexes.get(entryVersionId)
+      if (known === undefined) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} carries an unknown controller ` +
+            `document version.`
+        )
+      }
+      entryVersionIndex = known
+      if (entryVersionIndex < headVersionIndex) {
+        throw new ResourceLogIntegrityError(
+          `Resource log entry ${ordinal} carries a controller versionId ` +
+            `behind its predecessor (controller versionIds must be monotone ` +
+            `along the log).`
+        )
+      }
+    }
+    assertionKeys = await controller.assertionKeysAt(entryVersionId)
     // The wire proof type narrows the kernel's (fixed purpose, optional
     // created); the shape check already enforced the profile form.
     await verifyEntryProofs(entry as Parameters<typeof verifyEntryProofs>[0], {
@@ -554,12 +603,16 @@ async function verifyEntryAgainstHead({
   // ceremony-tail license on ladder-signed appends), consulted per proof
   // in array order, after membership passed and every proof of the entry
   // verified, and before the head controller version advances. Signature
-  // first, so
-  // the hook never sees input from an unverified proof and a forged entry
-  // is refused as the integrity class even where the hook would also
-  // refuse it. The call sits outside the wrap above: a hook throw keeps
-  // its class -- an admission refusal is not evidence of a doctored log,
-  // and neither is a hook-internal bug.
+  // first, so the hook never sees input from an unverified proof and a
+  // forged entry is refused as the integrity class even where the hook
+  // would also refuse it; the same holds per entry, since every key in
+  // `proofKeys` belongs to a proof of this entry that verified through the
+  // kernel and passed membership. That property depends on the drain
+  // sitting here, after `verifyEntryProofs` returns and the kernel has
+  // thrown on any failing proof; moving it inside the wrap above would
+  // break it. The call sits outside the wrap: a hook throw keeps its class
+  // -- an admission refusal is not evidence of a doctored log, and neither
+  // is a hook-internal bug.
   for (const admission of admissions) {
     await controller.admitAppend?.(admission)
   }

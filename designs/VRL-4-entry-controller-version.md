@@ -483,6 +483,20 @@ proof plus a member proof, licensed (at most one ladder proof, section 8,
 question 2); `resourceLog-license`, `resourceLog-seal`, `descriptors`, and
 `keys-rosterLogStore` stay green.
 
+Section 4 rows exempted from a test in this repo (recorded 2026-08-22, when the
+pre-pass landed):
+
+- The create path's lost-race adoption of a refused co-signed genesis.
+  `createResourceLog` signs its own single-proof genesis, so a co-signed genesis
+  cannot enter that path.
+- The two-ladder-key and ladder-plus-member rows. They are wallet-core license
+  policy; the library carries none, and wallet-core's suite covers them.
+- The sealing-sweep convergence row. `seal.ts` is unchanged and the existing
+  seal tests stand.
+- The `scid-switch` tail of the durable-log row. The existing continuity tests
+  already cover `scid-switch`; the new durable-log test checks the refusal and
+  the held pin only.
+
 ## 8. Decisions (resolved at approval)
 
 1. Hook-input member name: `proofKeys`.

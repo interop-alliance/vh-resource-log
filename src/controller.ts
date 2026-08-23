@@ -79,17 +79,36 @@ export interface ResourceLogController {
    * admission step, the right shape only for a controller document that
    * cannot list such methods.
    *
+   * The input is per proof, but its controller version is the entry's: every
+   * proof of an entry carries the same controller versionId (the verifier
+   * refuses an entry whose proofs disagree, and one that repeats a signing
+   * key), so `controllerVersionId` and `controllerVersionIndex` are identical
+   * across the calls for one entry. `proofKeys` is the entry-level view a
+   * per-proof hook otherwise lacks: every proof's signing key, distinct, each
+   * of which verified and passed membership. Read it as a set: the proof
+   * array is host-mutable in order and multiplicity, in both directions. A
+   * host can reorder, duplicate, or delete proofs without touching a
+   * signature, since each proof signs the entry minus the array, so
+   * `proofKeys` is a lower bound on the entry's proofs, not the full set. A
+   * hook must return the same verdict for any ordering of `proofKeys`; a
+   * count policy binds an honest host and the writer's own pre-write pass,
+   * and read-back confirmation catches a deleted proof for the writer's own
+   * entry. The identical-input promise above holds up to `proofKeys` order.
+   *
    * @param input {object}
    * @param input.ordinal {number}   the entry's 1-based position in the log
    * @param input.keyMultibase {string}   the proof's signing-key multibase
-   * @param [input.controllerVersionId] {string}   the proof's entry
-   *   controller versionId (absent on an unversioned controller)
-   * @param input.controllerVersionIndex {number | null}   the controller
-   *   versionId as an index into `versionIds` (`null` on an unversioned
-   *   controller)
+   * @param [input.controllerVersionId] {string}   the entry's controller
+   *   versionId, as a `versionId` (absent on an unversioned controller)
+   * @param input.controllerVersionIndex {number | null}   the entry's
+   *   controller versionId as an index into `versionIds` (`null` on an
+   *   unversioned controller)
    * @param input.headControllerVersionIndex {number}   the head controller
    *   version before this entry -- the verified predecessors' effective
    *   controller version
+   * @param input.proofKeys {string[]}   every proof's signing-key multibase
+   *   in array order, one per proof, distinct; the calling proof's key is
+   *   among them at its position
    * @returns {Promise<void>}
    */
   admitAppend?(input: {
@@ -98,5 +117,6 @@ export interface ResourceLogController {
     controllerVersionId?: string
     controllerVersionIndex: number | null
     headControllerVersionIndex: number
+    proofKeys: string[]
   }): Promise<void>
 }

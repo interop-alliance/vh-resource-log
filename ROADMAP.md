@@ -61,17 +61,22 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 - design: designs/VRL-4-entry-controller-version.md
 - design-approved: 2026-08-22
 - acceptance:
-  - [ ] `src/verify.ts` pre-pass implemented per design section 5; every row of
+  - [x] `src/verify.ts` pre-pass implemented per design section 5; every row of
         the section 4 interaction matrix has a test or is exempted with the
         exemption recorded
   - [ ] the consumer list in design section 3 is handled in full (this repo's
         three raw-input `toEqual` assertions, wallet-core's license, controller,
         fixture hook, and ten license-test literals, the "exactly two shapes"
         texts, app-connect-spec decision 0003, the range bumps in publish order)
-  - [ ] the section 7 test plan is green in this repo and wallet-core
+        (this repo's three raw-input assertions done; wallet-core,
+        app-connect-spec, and the range bumps remain)
+  - [ ] the section 7 test plan is green in this repo and wallet-core (green in
+        this repo; wallet-core's portion remains)
   - [ ] the doc edits in section 5 are made (ARCHITECTURE.md invariants 6 and 12
         and the glossary, CHANGELOG 0.4.0 breaking, the LEARNINGS.md lesson, and
         the spec passages in section 8 decision 3 edited by the maintainer)
+        (ARCHITECTURE.md, CHANGELOG.md, and LEARNINGS.md done in this repo; the
+        spec passages remain for the maintainer)
 
 `src/verify.ts:476`. `headVersionIndex` advances only after `verifyEntryProofs`
 returns, so every proof in an entry is checked against the previous entry's head

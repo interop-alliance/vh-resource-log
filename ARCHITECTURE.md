@@ -84,9 +84,29 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    view and the input; a call is not evidence that an entry was or will be
    written. The hook runs after the kernel call, outside the integrity wrap, so
    a throw needs no capture and a forged signature is refused as the integrity
-   class whatever the hook would have said (the hook never sees input from an
-   unverified proof). The obligation the seam creates: a controller port over a
-   document that can list ladder-shaped verification methods (any wallet account
+   class whatever the hook would have said. The hook never sees input from an
+   unverified proof: every key in the input's `proofKeys` belongs to a proof of
+   the same entry that verified through the kernel and passed membership,
+   because the drain that pushes hook input runs only after `verifyEntryProofs`
+   returns, and the kernel throws on the first failure. A refactor that moved
+   the drain inside the kernel's wrap would break this. The input's
+   `controllerVersionId` and `controllerVersionIndex` are the entry's controller
+   version, the same for every proof of the entry (invariant 12); `proofKeys`
+   lists every proof's signing key, distinct, so a hook can apply a per-entry
+   policy the library does not carry. The proof array is host-mutable in order
+   and multiplicity, in both directions. A host can reorder, duplicate, or
+   delete proofs without touching a signature or the hash, since each proof
+   signs the entry minus the array and the hash input omits `proof`. Any strict
+   non-empty subset of an entry's proofs still verifies, so `proofKeys` is a
+   lower bound on the entry's proofs, not the full set. A hook must treat
+   `proofKeys` as a set and return the same verdict for any ordering of it. A
+   policy that refuses on a count above one therefore binds an honest host and
+   the writer's own pre-write pass; read-back confirmation catches a deleted
+   proof for the writer's own entry, but a malicious host can still present a
+   smaller proof set to a third-party reader, silently. The identical-input
+   promise between the pre-write pass and read-back holds up to `proofKeys`
+   order. The obligation the seam creates: a controller port over a document
+   that can list ladder-shaped verification methods (any wallet account
    did:webvh document) MUST supply the hook, carrying wallet-core's
    ceremony-tail license -- a bare view does not lack ladder keys, it lacks the
    ability to recognize them, and a hook-less read would admit the silent-rekey
@@ -136,6 +156,22 @@ was-client and wallet-core depend on this library; nothing here depends on them.
     controller view is stale still passes (invariant 5, the spec's revocation
     window), and a writer that bypasses the library's write path is not
     constrained. It does not replace read-back (invariant 7).
+12. **An entry carries one controller versionId, by distinct signing keys.**
+    Every proof of an entry carries the same controller versionId (or none,
+    under an unversioned controller), and no signing key appears twice; proofs
+    that disagree, or a repeated key, refuse the log as Integrity. Presence or
+    absence of a controller versionId is checked on every proof; whether the
+    proofs agree, whether that versionId is known, and its monotonicity against
+    the head controller version are each checked once per entry. Every signing
+    key's `assertionMethod` membership is checked at the entry's controller
+    versionId, and it becomes the head controller version for the next entry.
+    The rule exists because the proof array sits outside the hash and every
+    signature (`proof` is omitted from the hash input, and each proof signs the
+    entry minus the array), so a host can duplicate, reorder, or delete proofs
+    undetected; the reduction from proofs to one entry-level controller
+    versionId is computed before the kernel checks any signature, since the
+    kernel verifies proofs in array order with no lookahead. Decision
+    [0002](decisions/0002-one-controller-version-per-entry.md).
 
 ## Ownership heuristics
 
@@ -231,13 +267,18 @@ ARCHITECTURE.md Glossary section.
   the `versionId` DID parameter on its `verificationMethod`: the controller head
   as the writer last verified it, and the version at which `assertionMethod`
   membership is checked on read. Expressed inside the verifier as an index into
-  the controller view's `versionIds`. Avoid: checkpoint, pinned version, anchor.
+  the controller view's `versionIds`. Defined per proof, but an entry carries
+  only one: every proof of an entry must carry the same controller versionId, by
+  distinct signing keys (invariant 12); it is the entry's, not each proof's own.
+  Avoid: checkpoint, pinned version, anchor.
 - **Head controller version** -- the controller version the verified entries so
   far stand at, carried by the verifier as it walks the log (`headVersionIndex`
   in the code). An entry's controller versionId must be at or past it
-  (controller-version monotonicity), and it becomes the entry's own once the
-  entry passes. The hook sees it as `headControllerVersionIndex`. Avoid: version
-  floor, floor, watermark, high-water mark, anchor floor.
+  (controller-version monotonicity), checked once per entry against the entry's
+  single controller versionId rather than per proof (invariant 12), and it
+  becomes the entry's own once the entry passes. The hook sees it as
+  `headControllerVersionIndex`. Avoid: version floor, floor, watermark,
+  high-water mark, anchor floor.
 - **Effective controller version** -- the head controller version after the
   whole loop, which monotonicity makes the verified head's own controller
   version (`VerifiedResourceLog.headControllerVersionIndex`). The sealing sweep

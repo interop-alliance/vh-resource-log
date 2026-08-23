@@ -760,7 +760,8 @@ describe('appendResourceLog pre-write pass', () => {
         keyMultibase: alice.signingKeyMultibase,
         controllerVersionId: '1-v1',
         controllerVersionIndex: 0,
-        headControllerVersionIndex: 0
+        headControllerVersionIndex: 0,
+        proofKeys: [alice.signingKeyMultibase]
       }
     ])
   })
