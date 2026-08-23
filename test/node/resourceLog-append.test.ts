@@ -873,7 +873,8 @@ describe('appendResourceLog pre-write pass', () => {
       buildState: () => ({ type: 'TestState', value: 2 })
     })
     expect(confirmed.entries).toHaveLength(3)
-    // Attempt 1 verified its candidate (ordinal 2) at the genesis floor;
+    // Attempt 1 verified its candidate (ordinal 2) at the genesis controller
+    // version;
     // attempt 2 verified a new candidate (ordinal 3) at bob's controller
     // version.
     expect(inputs.find(input => input.ordinal === 2)).toEqual({
@@ -1109,7 +1110,7 @@ describe('verifyResourceLogAppend', () => {
     expect(calls).toBe(0)
   })
 
-  it('refuses an entry carrying a controller versionId behind the head floor', async () => {
+  it('refuses an entry carrying a controller versionId behind the head controller version', async () => {
     const alice = await makeLogClient()
     const keys = [alice.signingKeyMultibase]
     const twoVersions = fakeController({

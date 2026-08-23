@@ -49,10 +49,10 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
   - vh-resource-log `src/verify.ts`, ARCHITECTURE.md
   - encrypted-collections-spec (the spec states the per-entry rule but does not
     say how divergent per-proof `versionId`s reduce to one entry controller
-    version; decide and write it down in `#log-proof`, `#log-authorization`,
-    and `#log-verification` step 5)
+    version; decide and write it down in `#log-proof`, `#log-authorization`, and
+    `#log-verification` step 5)
   - wallet-core `src/resourceLog/license.ts` (the one-shot license is fed the
-    same floor)
+    same head controller version)
   - freewallet (direct `^0.3.0` pin on this library plus `link:` on wallet-core;
     range bump in order)
   - app-connect-spec `decisions/0003-ladder-authority-clauses.md` (the one-shot
@@ -62,21 +62,21 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 - acceptance:
   - [ ] Within one entry, each proof's membership is checked at the entry's
         effective controller version (or the entry is refused when its proofs
-        disagree), rather than at the proof's own controller version against
-        the previous entry's floor
+        disagree), rather than at the proof's own controller version against the
+        previous entry's head controller version
   - [ ] A multi-proof entry carrying a removed member's proof at a controller
         version below a co-signer's is refused
   - [ ] Two ladder-signed proofs at one inventory-changing version no longer
         both pass a one-shot `admitAppend` license
   - [ ] Multi-proof test cases added to `test/node/resourceLog-verify.test.ts`
 
-`src/verify.ts:476`. `versionFloor` advances only after `verifyEntryProofs`
-returns, so every proof in an entry is checked against the previous entry's
-floor and at its own controller version. Alice removed at version 5, Bob
-carrying controller version 6 and Alice carrying version 4 on the same entry:
-both pass, `headControllerVersionIndex` becomes 6, and `sealResourceLog`
-reports the log sealed with a removed member's signature on its head. The
-spec's rule (spec.md:1345-1347) is written per entry.
+`src/verify.ts:476`. `headVersionIndex` advances only after `verifyEntryProofs`
+returns, so every proof in an entry is checked against the previous entry's head
+controller version and at its own controller version. Alice removed at version
+5, Bob carrying controller version 6 and Alice carrying version 4 on the same
+entry: both pass, `headControllerVersionIndex` becomes 6, and `sealResourceLog`
+reports the log sealed with a removed member's signature on its head. The spec's
+rule (spec.md:1345-1347) is written per entry.
 
 ### VRL-5: Escape the segments of `resourceLogPinId`
 
@@ -179,8 +179,8 @@ the `method` check catches it.
 finds the log already sealed, `buildState` returns `null`, nothing is written,
 and the call still returns `{ sealed: true }`; the same state read without a
 hint returns `sealed: false` at line 149. Lines 124-125 also return
-`verified: null` when a hint was supplied, unlike line 129. wallet-core
-surfaces the flag as a ceremony outcome.
+`verified: null` when a hint was supplied, unlike line 129. wallet-core surfaces
+the flag as a ceremony outcome.
 
 ### VRL-10: Move the sealing-sweep test suite into this repo
 

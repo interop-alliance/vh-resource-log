@@ -275,7 +275,7 @@ describe('the admitAppend admission hook', () => {
     ).rejects.toBeInstanceOf(ResourceLogIntegrityError)
   })
 
-  it("hands the hook the version floor of the entries before it, not the entry's own controller versionId", async () => {
+  it("hands the hook the head controller version of the entries before it, not the entry's own controller versionId", async () => {
     const alice = await makeLogClient()
     const bob = await makeLogClient()
     const versions = [
@@ -329,16 +329,17 @@ describe('the admitAppend admission hook', () => {
       controller: watching,
       expectedMethod: METHOD
     })
-    // headControllerVersionIndex is the floor the previous entries left
-    // behind, so entry 3 still sees 0 (entry 2's controller version) even
-    // though it carries controller version index 1: the drain runs before
-    // the floor advances.
+    // headControllerVersionIndex is the head controller version the previous
+    // entries left behind, so entry 3 still sees 0 (entry 2's controller
+    // version) even though it carries controller version index 1: the drain
+    // runs before the head controller version advances.
     expect(seen).toEqual([
       { ordinal: 2, controllerVersionIndex: 0, headControllerVersionIndex: 0 },
       { ordinal: 3, controllerVersionIndex: 1, headControllerVersionIndex: 0 },
       { ordinal: 3, controllerVersionIndex: 1, headControllerVersionIndex: 0 }
     ])
-    // Both proofs of entry 3 read the same floor: it does not move between
+    // Both proofs of entry 3 read the same head controller version: it does
+    // not move between
     // one proof of an entry and the next.
     expect(seen[1]!.headControllerVersionIndex).toBe(
       seen[2]!.headControllerVersionIndex

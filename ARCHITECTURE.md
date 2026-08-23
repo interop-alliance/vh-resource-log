@@ -74,8 +74,8 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    (multi-proof entries are legal, so a per-entry call would admit an unadmitted
    proof in a later array position), after `assertionMethod` membership passes,
    after every proof of the entry has verified cryptographically, and before the
-   version floor advances, for every entry past genesis. The hook is also
-   consulted on the writer's own candidate entry before the write
+   head controller version advances, for every entry past genesis. The hook is
+   also consulted on the writer's own candidate entry before the write
    (`verifyResourceLogAppend`, run by `appendResourceLog` on every
    compare-and-swap attempt), after the candidate's proofs verify. It is
    therefore called on entries that then lose the race or are refused and never
@@ -116,26 +116,26 @@ was-client and wallet-core depend on this library; nothing here depends on them.
     construction; the gap is the run where no such write happens (a rotation
     that no-ops because the retiree held no current-epoch wrap), leaving the
     log's head still at a controller version from before the removal. A sweep
-    that would write is refused pre-write when the sweeping
-    client is the removed member (invariant 11); the convergence branch, which
-    writes nothing, still runs before the pass. The wallet-side ceremonies that
-    drive it stay in `@interop/wallet-core`.
+    that would write is refused pre-write when the sweeping client is the
+    removed member (invariant 11); the convergence branch, which writes nothing,
+    still runs before the pass. The wallet-side ceremonies that drive it stay in
+    `@interop/wallet-core`.
 11. **The write path refuses before the host does.** Before `store.append` or
     `store.create`, the candidate entry is verified as the reader would verify
     it at its ordinal (shape, hash chain to the head, proofs, the authorization
-    rule at the head's version floor, the `admitAppend` hook, the terminal-entry
-    rules), against a controller view at or past the one the head was verified
-    with, so an honest writer does not send an entry it would itself refuse on
-    read-back -- one refused entry rejects the whole log for every reader
-    (invariant 2) and an appended entry cannot be removed. A refusal throws the
-    class the read-back would have thrown, from the same code, and nothing is
-    written. On the create path a refused genesis against an existing log falls
-    through to lost-race adoption (the winner's log is verified and pinned), and
-    only the Integrity class falls through. This is self-protection, not an
-    authorization boundary: a removed member whose controller view is stale
-    still passes (invariant 5, the spec's revocation window), and a writer that
-    bypasses the library's write path is not constrained. It does not replace
-    read-back (invariant 7).
+    rule at the head controller version, the `admitAppend` hook, the
+    terminal-entry rules), against a controller view at or past the one the head
+    was verified with, so an honest writer does not send an entry it would
+    itself refuse on read-back -- one refused entry rejects the whole log for
+    every reader (invariant 2) and an appended entry cannot be removed. A
+    refusal throws the class the read-back would have thrown, from the same
+    code, and nothing is written. On the create path a refused genesis against
+    an existing log falls through to lost-race adoption (the winner's log is
+    verified and pinned), and only the Integrity class falls through. This is
+    self-protection, not an authorization boundary: a removed member whose
+    controller view is stale still passes (invariant 5, the spec's revocation
+    window), and a writer that bypasses the library's write path is not
+    constrained. It does not replace read-back (invariant 7).
 
 ## Ownership heuristics
 
@@ -228,22 +228,21 @@ ARCHITECTURE.md Glossary section.
   static controller). Entries under it carry no controller versionId and every
   controller-version rule degrades to current-document verification.
 - **Controller versionId** -- the controller-log version a proof names through
-  the `versionId` DID parameter on its `verificationMethod`: the controller
-  head as the writer last verified it, and the version at which
-  `assertionMethod` membership is checked on read. Expressed inside the
-  verifier as an index into the controller view's `versionIds`. Avoid:
-  checkpoint, pinned version, anchor.
-- **Version floor** -- the verifier's running minimum as it walks the log: the
-  controller version index the verified predecessor entries left behind. An
-  entry's controller versionId must be at or past it (controller-version
-  monotonicity), and it advances after the entry passes. The hook sees it as
-  `headControllerVersionIndex`. Avoid: watermark, high-water mark, anchor
-  floor.
-- **Effective controller version** -- the version floor after the whole loop,
-  which monotonicity makes the verified head's own controller version
-  (`VerifiedResourceLog.headControllerVersionIndex`). The sealing sweep
-  compares it against the controller's latest membership change. Avoid: head
-  version, effective anchor.
+  the `versionId` DID parameter on its `verificationMethod`: the controller head
+  as the writer last verified it, and the version at which `assertionMethod`
+  membership is checked on read. Expressed inside the verifier as an index into
+  the controller view's `versionIds`. Avoid: checkpoint, pinned version, anchor.
+- **Head controller version** -- the controller version the verified entries so
+  far stand at, carried by the verifier as it walks the log (`headVersionIndex`
+  in the code). An entry's controller versionId must be at or past it
+  (controller-version monotonicity), and it becomes the entry's own once the
+  entry passes. The hook sees it as `headControllerVersionIndex`. Avoid: version
+  floor, floor, watermark, high-water mark, anchor floor.
+- **Effective controller version** -- the head controller version after the
+  whole loop, which monotonicity makes the verified head's own controller
+  version (`VerifiedResourceLog.headControllerVersionIndex`). The sealing sweep
+  compares it against the controller's latest membership change. Avoid:
+  effective anchor.
 - **Authorization rule** -- the profile's whole append-authority test: the
   proof's key is a member of `assertionMethod` at the controller version it
   carries. It is checked against that version on purpose, so a signature made
@@ -318,9 +317,9 @@ ARCHITECTURE.md Glossary section.
   `keyAgreement`-only method leaving the document never registers. Avoid:
   revocation event, roster change.
 - **Sealing append** -- an entry carrying a controller version at or past the
-  latest membership change, proving the surviving writers extended the log
-  under the new membership. Any ordinary post-edit write is one by
-  construction. Avoid: fence, checkpoint.
+  latest membership change, proving the surviving writers extended the log under
+  the new membership. Any ordinary post-edit write is one by construction.
+  Avoid: fence, checkpoint.
 - **Sealing sweep** -- `sealResourceLog`, the idempotent backstop that writes a
   sealing append (a verbatim re-append of the head state) only when the
   effective controller version is still pre-removal (invariant 10). A log is

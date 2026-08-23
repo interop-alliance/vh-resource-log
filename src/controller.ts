@@ -54,7 +54,8 @@ export interface ResourceLogController {
    * cannot know, consulted per PROOF (multi-proof entries are legal, so a
    * per-entry call would admit an unadmitted proof in a later array
    * position), after `assertionMethod` membership passes, after the entry's
-   * proofs verify, and before the version floor advances, for every entry
+   * proofs verify, and before the head controller version advances, for
+   * every entry
    * past genesis. A throw refuses the append (or the served log) with the
    * hook's own error class, propagated intact by the verifier. The hook is not
    * called for any proof of an entry that fails verification; an
@@ -86,9 +87,9 @@ export interface ResourceLogController {
    * @param input.controllerVersionIndex {number | null}   the controller
    *   versionId as an index into `versionIds` (`null` on an unversioned
    *   controller)
-   * @param input.headControllerVersionIndex {number}   the version floor
-   *   before this entry -- the verified predecessors' effective controller
-   *   version
+   * @param input.headControllerVersionIndex {number}   the head controller
+   *   version before this entry -- the verified predecessors' effective
+   *   controller version
    * @returns {Promise<void>}
    */
   admitAppend?(input: {

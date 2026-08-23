@@ -62,9 +62,9 @@ const ENTRY_MEMBERS = [
  * `terminal` is the head's `nextLog` when the log is closed by a handover
  * entry (appends must be refused), `previousLog` the genesis back-reference
  * when this log is a handover successor. `headControllerVersionIndex` is the
- * head's effective controller versionId -- the verifier's version floor
- * after the whole loop, which monotonicity makes the head entry's own
- * controller versionId -- as an index into the controller's `versionIds`
+ * head's effective controller versionId -- the verifier's head controller
+ * version after the whole loop, which monotonicity makes the head entry's
+ * own controller versionId -- as an index into the controller's `versionIds`
  * (`null` on an unversioned controller, whose entries carry no controller
  * versionId); the sealing sweep compares it against the controller's latest
  * membership change.
@@ -408,44 +408,45 @@ function checkTerminalState({
 }
 
 /**
- * Verifies one entry's proofs and authorization against the version floor its
- * predecessors established (the per-entry body of verification steps 4 and
+ * Verifies one entry's proofs and authorization against the head controller
+ * version its predecessors established (the per-entry body of verification steps 4 and
  * 5): every proof through the kernel, the external-authorization rule per
  * proof (controller DID, controller versionId presence, controller-version
- * monotonicity against the floor, `assertionMethod` membership at the
+ * monotonicity against that version, `assertionMethod` membership at the
  * controller version), then the controller's `admitAppend` hook per proof
  * for every entry past genesis. Resolves the entry's effective controller
- * version index, the floor for the next entry. Reads `entry` without
+ * version index, the head controller version for the next entry. Reads
+ * `entry` without
  * mutating it.
  *
  * @param options {object}
  * @param options.entry {ResourceLogEntry}
  * @param options.index {number}   the entry's 0-based position
  * @param options.controller {ResourceLogController}
- * @param options.versionFloor {number}   the predecessors' effective
- *   controller version
+ * @param options.headVersionIndex {number}   the head controller version:
+ *   the predecessors' effective controller version as an index
  * @param options.versionIndexes {Map<string, number>}   from
  *   {@link versionIndexesOf}
  * @param options.versioned {boolean}   whether the controller is versioned
  * @returns {Promise<number>}
  */
-async function verifyEntryAgainstFloor({
+async function verifyEntryAgainstHead({
   entry,
   index,
   controller,
-  versionFloor,
+  headVersionIndex,
   versionIndexes,
   versioned
 }: {
   entry: ResourceLogEntry
   index: number
   controller: ResourceLogController
-  versionFloor: number
+  headVersionIndex: number
   versionIndexes: Map<string, number>
   versioned: boolean
 }): Promise<number> {
   const ordinal = index + 1
-  let entryVersionIndex = versionFloor
+  let entryVersionIndex = headVersionIndex
   // The admission hook's per-proof inputs, recorded during authorization
   // and drained only after every proof of the entry has verified (below).
   const admissions: Array<
@@ -498,7 +499,7 @@ async function verifyEntryAgainstFloor({
         )
       }
       controllerVersionIndex = known
-      if (controllerVersionIndex < versionFloor) {
+      if (controllerVersionIndex < headVersionIndex) {
         throw new ResourceLogIntegrityError(
           `Resource log entry ${ordinal} carries a controller versionId ` +
             `behind its predecessor (controller versionIds must be monotone ` +
@@ -515,16 +516,17 @@ async function verifyEntryAgainstFloor({
       )
     }
     // Record the admission input for every entry past genesis; the hook
-    // itself runs after the kernel call. The floor at this point is still
-    // the previous entries' effective controller version -- the verified
-    // head this append extended -- and nothing assigns it before the drain.
+    // itself runs after the kernel call. The head controller version at this
+    // point is still the previous entries' effective controller version --
+    // the verified head this append extended -- and nothing assigns it before
+    // the drain.
     if (index > 0 && controller.admitAppend !== undefined) {
       admissions.push({
         ordinal,
         keyMultibase,
         ...(controllerVersionId === undefined ? {} : { controllerVersionId }),
         controllerVersionIndex: versioned ? controllerVersionIndex : null,
-        headControllerVersionIndex: versionFloor
+        headControllerVersionIndex: headVersionIndex
       })
     }
     entryVersionIndex = Math.max(entryVersionIndex, controllerVersionIndex)
@@ -551,7 +553,8 @@ async function verifyEntryAgainstFloor({
   // The admission hook: controller-domain append policy (wallet-core's
   // ceremony-tail license on ladder-signed appends), consulted per proof
   // in array order, after membership passed and every proof of the entry
-  // verified, and before the version floor advances. Signature first, so
+  // verified, and before the head controller version advances. Signature
+  // first, so
   // the hook never sees input from an unverified proof and a forged entry
   // is refused as the integrity class even where the hook would also
   // refuse it. The call sits outside the wrap above: a hook throw keeps
@@ -646,13 +649,13 @@ export async function verifyResourceLog({
   // monotonicity carried along the log.
   const versioned = controller.versionIds.length > 0
   const versionIndexes = versionIndexesOf(controller)
-  let versionFloor = 0
+  let headVersionIndex = 0
   for (const [index, entry] of entries.entries()) {
-    versionFloor = await verifyEntryAgainstFloor({
+    headVersionIndex = await verifyEntryAgainstHead({
       entry,
       index,
       controller,
-      versionFloor,
+      headVersionIndex,
       versionIndexes,
       versioned
     })
@@ -724,7 +727,7 @@ export async function verifyResourceLog({
     head,
     state: head.state,
     pin: { method, scid, head: head.versionId },
-    headControllerVersionIndex: versioned ? versionFloor : null,
+    headControllerVersionIndex: versioned ? headVersionIndex : null,
     terminal,
     previousLog: genesisParameters.previousLog ?? null
   }
@@ -741,7 +744,7 @@ export async function verifyResourceLog({
  * {@link ResourceLogIntegrityError} (the head's own entries would fail the
  * controller-versionId-presence rule on read-back); then the entry's shape at
  * its would-be ordinal, its hash chain to the head, its proofs, the
- * authorization rule at the head's version floor, the `admitAppend` hook per
+ * authorization rule at the head controller version, the `admitAppend` hook per
  * proof, and, for a terminal candidate, the state-equality rule. Every
  * refusal is the class and message the read path throws, from the same code;
  * a hook refusal keeps the hook's own class. The pass does not mutate `entry`
@@ -795,11 +798,11 @@ export async function verifyResourceLogAppend({
     index,
     predecessorVersionId: head.head.versionId
   })
-  await verifyEntryAgainstFloor({
+  await verifyEntryAgainstHead({
     entry,
     index,
     controller,
-    versionFloor: head.headControllerVersionIndex ?? 0,
+    headVersionIndex: head.headControllerVersionIndex ?? 0,
     versionIndexes: versionIndexesOf(controller),
     versioned
   })
