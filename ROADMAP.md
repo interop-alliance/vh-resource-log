@@ -161,35 +161,6 @@ this repo.
 the real adapter JSON-serializes it to a string, so read-back verification fails
 only in production.
 
-### VRL-27: `readResourceLog` reports an absent log without consulting the pin
-
-- status: todo
-- priority: medium
-- labels: continuity, pin, read
-- verdict: plausible
-- touches:
-  - vh-resource-log `src/append.ts` (`readResourceLog`), ARCHITECTURE.md
-    (invariant 3 prose), `test/node/resourceLog-append.test.ts`
-  - wallet-core `rotateRosterToDocumentAndCascade` and `ensureUserKeyRoster`
-    (both treat a `null` read as the pre-genesis state), `descriptors.test.ts`
-    and `keys-rosterLogStore.test.ts`
-- acceptance:
-  - [ ] With a pin held for `logId`, a `store.read()` of `null` is refused as
-        `ResourceLogContinuityError` with reason `rollback` and the pinned head
-        attached, through `readResourceLog` and every caller of it
-        (`appendResourceLog`, `createResourceLog`, `sealResourceLog`)
-  - [ ] With no pin held, an absent log still reads as `null`
-  - [ ] wallet-core's governed read and create paths surface the refusal instead
-        of re-provisioning a fresh roster
-
-`src/append.ts:67-70`. The absent branch returns before `pinStore.read`, so a
-host that deletes or hides a log this client has pinned is reported as
-pre-genesis. Downstream, wallet-core re-provisions a new roster with a fresh
-epoch; the genesis pre-write pass is blind to it by design (`pin: null`, VRL-2
-design section 2), and `settle`'s read-back only catches it as `scid-switch`
-after `store.create` has landed a new log at the resource. Found by the VRL-2
-ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
-
 ## Error contracts and classification
 
 ### VRL-13: Distinguish "controller versionId unknown to this reader" from fabrication

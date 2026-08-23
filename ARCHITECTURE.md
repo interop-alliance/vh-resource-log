@@ -59,6 +59,11 @@ depend on this library; nothing here depends on them.
    handover.** The pin never regresses; a rollback, fork, SCID switch, or method
    switch against it refuses with `ResourceLogContinuityError`, and fork
    refusals retain the served entries as transferable evidence of equivocation.
+   An absent log is pre-genesis only while no pin is held: once a pin exists
+   for the slot, a host serving nothing there is a `rollback`, through
+   `readResourceLog` and every path over it, and `createResourceLog` consults
+   the pin before it builds or writes anything, so a hidden log is never
+   overwritten with a fresh genesis.
 4. **Pin slot keys are derived by the library** (`resourceLogPinId`), not chosen
    by a store implementation, and are host-free
    (`space/<spaceId>/<collectionId>/<resourceId>`): a log served from a claimed

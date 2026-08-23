@@ -234,3 +234,37 @@ promises two different logs never share a `logId`; WAS leaves id format to the
 implementer and was-client percent-encodes slots individually, so `a%2Fb` is a
 legal collection. The encoding choice is a wire-level decision for the
 maintainer.
+
+### VRL-27: `readResourceLog` reports an absent log without consulting the pin
+
+- status: done
+- priority: medium
+- labels: continuity, pin, read
+- verdict: plausible
+- touches:
+  - vh-resource-log `src/append.ts` (`readResourceLog`), ARCHITECTURE.md
+    (invariant 3 prose), `test/node/resourceLog-append.test.ts`
+  - wallet-core `rotateRosterToDocumentAndCascade` and `ensureUserKeyRoster`
+    (both treat a `null` read as the pre-genesis state), `descriptors.test.ts`
+    and `keys-rosterLogStore.test.ts`
+- acceptance:
+  - [x] With a pin held for `logId`, a `store.read()` of `null` is refused as
+        `ResourceLogContinuityError` with reason `rollback` and the pinned head
+        attached, through `readResourceLog` and every caller of it
+        (`appendResourceLog`, `createResourceLog`, `sealResourceLog`)
+  - [x] With no pin held, an absent log still reads as `null`
+  - [x] wallet-core's governed read and create paths surface the refusal instead
+        of re-provisioning a fresh roster
+
+`src/append.ts:67-70`. The absent branch returns before `pinStore.read`, so a
+host that deletes or hides a log this client has pinned is reported as
+pre-genesis. Downstream, wallet-core re-provisions a new roster with a fresh
+epoch; the genesis pre-write pass is blind to it by design (`pin: null`, VRL-2
+design section 2), and `settle`'s read-back only catches it as `scid-switch`
+after `store.create` has landed a new log at the resource. Found by the VRL-2
+ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
+
+Landed 2026-08-22: vh-resource-log 0.4.1 (`readResourceLog` consults the pin
+on an absent log; `createResourceLog` consults it before building or writing)
+and wallet-core 0.53.0 (the governed store's `create` consults the pin; read
+paths surface the refusal through the library).

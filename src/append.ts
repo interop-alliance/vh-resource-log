@@ -17,7 +17,11 @@
  */
 import type { ResourceLogEntry } from '@interop/storage-core'
 import type { ResourceLogController } from './controller.js'
-import { isResourceLogConflictError, ResourceLogClosedError } from './errors.js'
+import {
+  isResourceLogConflictError,
+  ResourceLogClosedError,
+  ResourceLogContinuityError
+} from './errors.js'
 import { confirmAppend, type ResourceLogStore } from './store.js'
 import {
   buildResourceLogEntry,
@@ -70,7 +74,11 @@ async function verifyAndPin({
 /**
  * Reads and fully verifies a log through the store seam, advancing the
  * chain-head pin. Resolves `null` when the log resource does not exist yet
- * (the pre-genesis state). The one read entry point every consumer -- a
+ * (the pre-genesis state) and no pin is held for it. An absent log under a
+ * held pin is refused as a `rollback` ({@link ResourceLogContinuityError}):
+ * this client has verified a history in that slot, so a host that now serves
+ * nothing is hiding it, and reporting pre-genesis would invite the caller to
+ * create a fresh log over it. The one read entry point every consumer -- a
  * login-time roster read, a pre-append verification, a first-contact
  * bootstrap -- goes through, so the pin rules cannot be bypassed by reading
  * around them.
@@ -102,6 +110,13 @@ export async function readResourceLog({
 }): Promise<{ verified: VerifiedResourceLog; etag?: string } | null> {
   const current = await store.read()
   if (current === null) {
+    const pin = await pinStore.read({ logId })
+    if (pin !== null) {
+      throw new ResourceLogContinuityError({
+        reason: 'rollback',
+        pinnedHead: pin.head
+      })
+    }
     return null
   }
   const verified = await verifyAndPin({
@@ -253,7 +268,10 @@ export async function appendResourceLog({
  * membership and controller-version rules at the genesis's controller
  * versionId, no pin); a refusal
  * throws `ResourceLogIntegrityError` and creates nothing, unless a log
- * already exists, in which case the lost-race branch adopts it.
+ * already exists, in which case the lost-race branch adopts it. Under a pin
+ * already held for `logId` nothing is built or written: the slot's log is
+ * read and adopted through {@link readResourceLog}, which refuses an absent
+ * one as a `rollback`.
  *
  * @param options {object}
  * @param options.store {ResourceLogStore}
@@ -290,6 +308,20 @@ export async function createResourceLog({
   previousLog?: { scid: string; head: string }
   versionTime?: string
 }): Promise<{ verified: VerifiedResourceLog; created: boolean }> {
+  // A held pin means this client has already verified a log in this slot, so
+  // there is nothing to create: the served log is adopted through the pinned
+  // read, and an absent one is refused there as a rollback rather than
+  // overwritten with a fresh genesis.
+  if ((await pinStore.read({ logId })) !== null) {
+    const current = await readResourceLog({
+      store,
+      controller,
+      expectedMethod: method,
+      pinStore,
+      logId
+    })
+    return { verified: current!.verified, created: false }
+  }
   const genesis = await buildResourceLogGenesis({
     state,
     method,

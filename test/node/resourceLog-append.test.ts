@@ -1013,6 +1013,124 @@ describe('createResourceLog pre-write pass', () => {
   })
 })
 
+describe('an absent log under a held pin (the host hides a pinned log)', () => {
+  /**
+   * A created-and-pinned log the host then stops serving.
+   */
+  async function makeHiddenLog() {
+    const writer = await makeWriter()
+    const { alice, controller, store, pinStore } = writer
+    const { verified } = await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 1 }
+    })
+    store._setEntries(null)
+    return { ...writer, pinnedHead: verified.pin.head }
+  }
+
+  const rollback = (pinnedHead: string) => ({
+    name: 'ResourceLogContinuityError',
+    reason: 'rollback',
+    pinnedHead
+  })
+
+  it('readResourceLog refuses it as a rollback, keeping the pin', async () => {
+    const { controller, store, pinStore, pinnedHead } = await makeHiddenLog()
+    await expect(
+      readResourceLog({
+        store,
+        controller,
+        expectedMethod: METHOD,
+        pinStore,
+        logId: LOG_ID
+      })
+    ).rejects.toMatchObject(rollback(pinnedHead))
+    expect((await pinStore.read({ logId: LOG_ID }))?.head).toBe(pinnedHead)
+  })
+
+  it('appendResourceLog refuses it as a rollback, not as pre-genesis', async () => {
+    const { alice, controller, store, pinStore, pinnedHead } =
+      await makeHiddenLog()
+    await expect(
+      appendResourceLog({
+        store,
+        controller,
+        expectedMethod: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: alice.logSigner,
+        buildState: () => ({ type: 'TestState', value: 2 })
+      })
+    ).rejects.toMatchObject(rollback(pinnedHead))
+  })
+
+  it('createResourceLog refuses it as a rollback, creating nothing', async () => {
+    const { alice, controller, store, pinStore, pinnedHead } =
+      await makeHiddenLog()
+    await expect(
+      createResourceLog({
+        store,
+        controller,
+        method: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: alice.logSigner,
+        state: { type: 'TestState', value: 1 }
+      })
+    ).rejects.toMatchObject(rollback(pinnedHead))
+    expect(store._getEntries()).toBeNull()
+    expect((await pinStore.read({ logId: LOG_ID }))?.head).toBe(pinnedHead)
+  })
+
+  it('createResourceLog adopts the served log under a held pin without writing', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 1 }
+    })
+    const before = store._getEntries()
+    const { verified, created } = await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 99 }
+    })
+    expect(created).toBe(false)
+    expect(verified.head.state).toEqual({ type: 'TestState', value: 1 })
+    expect(store._getEntries()).toEqual(before)
+  })
+
+  it('sealResourceLog refuses it as a rollback', async () => {
+    const { bob, afterRemoval, store, pinStore } = await makeRemovalViews()
+    const pinnedHead = (await pinStore.read({ logId: LOG_ID }))!.head
+    store._setEntries(null)
+    await expect(
+      sealResourceLog({
+        store,
+        controller: afterRemoval(),
+        expectedMethod: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: bob.logSigner
+      })
+    ).rejects.toMatchObject(rollback(pinnedHead))
+    expect(store._getEntries()).toBeNull()
+  })
+})
+
 describe('sealResourceLog pre-write pass', () => {
   it('refuses a sweep driven by the removed member; a surviving member seals', async () => {
     const { alice, bob, afterRemoval, store, pinStore } =

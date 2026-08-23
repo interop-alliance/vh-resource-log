@@ -2,6 +2,17 @@
 
 ## 0.4.1 - TBD
 
+### Fixed
+
+- `readResourceLog` now consults the chain-head pin on an absent log: with a pin
+  held for `logId`, a `store.read()` of `null` is refused as
+  `ResourceLogContinuityError` (reason `rollback`, pinned head attached) instead
+  of reported as pre-genesis. `appendResourceLog` and `sealResourceLog` surface
+  the same refusal, and `createResourceLog` checks the pin before building or
+  writing anything, adopting the served log or refusing the absent one rather
+  than landing a fresh genesis over a hidden log. With no pin held, an absent
+  log still reads as `null`.
+
 ### Changed
 
 - `resourceLogPinId` now throws a `TypeError` for an empty or slash-bearing
