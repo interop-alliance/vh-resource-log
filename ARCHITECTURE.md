@@ -24,7 +24,7 @@ src/store.ts       The ResourceLogStore port (read/append/create) and the
 src/errors.ts      The refusal taxonomy and the ratified name contracts
 src/controller.ts  The controller-view port verification authorizes against,
                    including the optional admitAppend admission hook
-src/vmFragment.ts  The one fragment reader for verification-method ids
+src/vmFragment.ts  The fragment reader and versioned-VM DID URL codec
 src/entry.ts       Genesis (two-pass SCID) and next-entry builders + signing
 src/verify.ts      Full chain verification, terminal entries, continuity
                    against the chain-head pin, the handover check, and the
@@ -42,8 +42,8 @@ src/testing.ts     The "./testing" subpath: fakeController, memoryLogStore
 Dependency direction is strictly downward: this library depends on
 `@interop/storage-core` (the wire types, `RESOURCE_LOG_METHOD`) and
 `@interop/did-method-webvh` (the hashing, `versionId`, SCID, and proof kernel,
-consumed as ten named imports) plus `json-canonicalize`, and on nothing else.
-was-client and wallet-core depend on this library; nothing here depends on them.
+consumed as named imports), and on nothing else. was-client and wallet-core
+depend on this library; nothing here depends on them.
 
 ## Invariants
 
@@ -268,9 +268,10 @@ ARCHITECTURE.md Glossary section.
   static controller). Entries under it carry no controller versionId and every
   controller-version rule degrades to current-document verification.
 - **Controller versionId** -- the controller-log version a proof names through
-  the `versionId` DID parameter on its `verificationMethod`: the controller head
-  as the writer last verified it, and the version at which `assertionMethod`
-  membership is checked on read. Expressed inside the verifier as an index into
+  the `versionId` DID parameter on its `verificationMethod` (the lone
+  parameter, built and parsed by one codec in `vmFragment.ts`): the controller
+  head as the writer last verified it, and the version at which
+  `assertionMethod` membership is checked on read. Expressed inside the verifier as an index into
   the controller view's `versionIds`. Defined per proof, but an entry carries
   only one: every proof of an entry must carry the same controller versionId, by
   distinct signing keys (invariant 12); it is the entry's, not each proof's own.

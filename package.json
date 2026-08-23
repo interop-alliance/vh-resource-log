@@ -43,8 +43,7 @@
   "sideEffects": false,
   "dependencies": {
     "@interop/did-method-webvh": "^5.5.1",
-    "@interop/storage-core": "^0.9.1",
-    "json-canonicalize": "3.0.0"
+    "@interop/storage-core": "^0.9.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

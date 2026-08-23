@@ -32,6 +32,42 @@ import {
 } from './verify.js'
 
 /**
+ * Verifies served entries against the held chain-head pin and advances the
+ * pin to the verified head. The one verify-then-pin sequence every read,
+ * append confirmation, and create confirmation goes through.
+ *
+ * @param options {object}
+ * @param options.entries {ResourceLogEntry[]}
+ * @param options.controller {ResourceLogController}
+ * @param options.expectedMethod {string}
+ * @param options.pinStore {ResourceLogPinStore}
+ * @param options.logId {string}
+ * @returns {Promise<VerifiedResourceLog>}
+ */
+async function verifyAndPin({
+  entries,
+  controller,
+  expectedMethod,
+  pinStore,
+  logId
+}: {
+  entries: ResourceLogEntry[]
+  controller: ResourceLogController
+  expectedMethod: string
+  pinStore: ResourceLogPinStore
+  logId: string
+}): Promise<VerifiedResourceLog> {
+  const verified = await verifyResourceLog({
+    entries,
+    controller,
+    expectedMethod,
+    pin: await pinStore.read({ logId })
+  })
+  await pinStore.write({ logId, pin: verified.pin })
+  return verified
+}
+
+/**
  * Reads and fully verifies a log through the store seam, advancing the
  * chain-head pin. Resolves `null` when the log resource does not exist yet
  * (the pre-genesis state). The one read entry point every consumer -- a
@@ -68,14 +104,13 @@ export async function readResourceLog({
   if (current === null) {
     return null
   }
-  const pin = await pinStore.read({ logId })
-  const verified = await verifyResourceLog({
+  const verified = await verifyAndPin({
     entries: current.entries,
     controller,
     expectedMethod,
-    pin
+    pinStore,
+    logId
   })
-  await pinStore.write({ logId, pin: verified.pin })
   return { verified, etag: current.etag }
 }
 
@@ -192,14 +227,13 @@ export async function appendResourceLog({
       throw err
     }
     const readBack = await confirmAppend({ store, entry })
-    const confirmed = await verifyResourceLog({
+    return verifyAndPin({
       entries: readBack.entries,
       controller,
       expectedMethod,
-      pin: await pinStore.read({ logId })
+      pinStore,
+      logId
     })
-    await pinStore.write({ logId, pin: confirmed.pin })
-    return confirmed
   }
   throw new Error(
     `Appending to the resource log lost the compare-and-swap race ` +
@@ -308,12 +342,12 @@ export async function createResourceLog({
         'was served on re-read.'
     )
   }
-  const verified = await verifyResourceLog({
+  const verified = await verifyAndPin({
     entries: current.entries,
     controller,
     expectedMethod: method,
-    pin: await pinStore.read({ logId })
+    pinStore,
+    logId
   })
-  await pinStore.write({ logId, pin: verified.pin })
   return { verified, created }
 }

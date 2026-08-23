@@ -6,7 +6,11 @@
  * `undefined`.
  */
 import { describe, expect, it } from 'vitest'
-import { vmFragmentOf } from '../../src/index.js'
+import {
+  buildVersionedVm,
+  parseVersionedVm,
+  vmFragmentOf
+} from '../../src/index.js'
 
 const multibase = 'z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK'
 
@@ -39,5 +43,49 @@ describe('vmFragmentOf', () => {
 
   it('takes the LAST segment of a degenerate double-`#` id', () => {
     expect(vmFragmentOf(`did:example:1#first#${multibase}`)).toBe(multibase)
+  })
+})
+
+describe('buildVersionedVm / parseVersionedVm', () => {
+  const did = 'did:webvh:QmScid:example.com:space:abc:id'
+
+  it('round-trips a versioned verification method', () => {
+    const parsed = {
+      did,
+      controllerVersionId: '3-zHash',
+      keyMultibase: multibase
+    }
+    expect(parseVersionedVm(buildVersionedVm(parsed))).toEqual(parsed)
+    expect(buildVersionedVm(parsed)).toBe(
+      `${did}?versionId=3-zHash#${multibase}`
+    )
+  })
+
+  it('round-trips an unversioned verification method', () => {
+    const parsed = { did, keyMultibase: multibase }
+    expect(parseVersionedVm(buildVersionedVm(parsed))).toEqual(parsed)
+    expect(buildVersionedVm(parsed)).toBe(`${did}#${multibase}`)
+  })
+
+  it('refuses a URL with no key fragment or an empty DID', () => {
+    expect(parseVersionedVm(did)).toBeUndefined()
+    expect(parseVersionedVm(`${did}?versionId=3-zHash#`)).toBeUndefined()
+    expect(parseVersionedVm(`#${multibase}`)).toBeUndefined()
+    expect(parseVersionedVm(`?versionId=3-zHash#${multibase}`)).toBeUndefined()
+  })
+
+  it('refuses a query that is not exactly one versionId parameter', () => {
+    expect(parseVersionedVm(`${did}?#${multibase}`)).toBeUndefined()
+    expect(parseVersionedVm(`${did}?versionId=#${multibase}`)).toBeUndefined()
+    expect(parseVersionedVm(`${did}?other=1#${multibase}`)).toBeUndefined()
+    expect(
+      parseVersionedVm(`${did}?versionId=3-zHash&other=1#${multibase}`)
+    ).toBeUndefined()
+    expect(
+      parseVersionedVm(`${did}?other=1&versionId=3-zHash#${multibase}`)
+    ).toBeUndefined()
+    expect(
+      parseVersionedVm(`${did}?versionId=3%2DzHash#${multibase}`)
+    ).toBeUndefined()
   })
 })

@@ -7,6 +7,16 @@
 - `resourceLogPinId` now throws a `TypeError` for an empty or slash-bearing
   `spaceId`, `collectionId`, or `resourceId`, instead of silently building an
   ambiguous slot key. Valid (URL-safe) ids produce the same pin id as before.
+- `confirmAppend` compares the served and sent entries with the kernel's
+  `canonicalizeStrict`; the direct `json-canonicalize` dependency is dropped.
+- Internal cleanup: one shared verify-then-pin step in the append path, one
+  `versionId` ordinal reader, and the sealing sweep resolves a controller's
+  assertion key sets concurrently.
+- The versioned verification-method DID URL is built and parsed by one codec,
+  `buildVersionedVm` / `parseVersionedVm` (exported). The verifier now rejects a
+  proof `verificationMethod` whose query is anything other than a single
+  non-empty `versionId` parameter; previously extra parameters were ignored and
+  the value was percent-decoded.
 
 ## 0.4.0 - 2026-08-22
 

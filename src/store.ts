@@ -19,8 +19,9 @@
  * entry is actually in the served history before treating the append -- or any
  * ceremony step gated on it -- as durable.
  */
-import { canonicalize } from 'json-canonicalize'
+import { canonicalizeStrict } from '@interop/did-method-webvh'
 import type { ResourceLogEntry } from '@interop/storage-core'
+import { versionIdOrdinal } from './entry.js'
 import { LogNotConfirmedError, ResourceLogIntegrityError } from './errors.js'
 
 /**
@@ -97,8 +98,8 @@ export async function confirmAppend({
   store: ResourceLogStore
   entry: ResourceLogEntry
 }): Promise<{ entries: ResourceLogEntry[]; etag?: string }> {
-  const ordinal = Number.parseInt(entry.versionId, 10)
-  if (!Number.isInteger(ordinal) || ordinal < 1) {
+  const ordinal = versionIdOrdinal(entry.versionId)
+  if (ordinal === undefined) {
     throw new ResourceLogIntegrityError(
       `Cannot confirm append: the entry's versionId "${entry.versionId}" ` +
         'does not start with a 1-based ordinal.'
@@ -112,7 +113,10 @@ export async function confirmAppend({
     )
   }
   const served = current.entries[ordinal - 1]
-  if (served === undefined || canonicalize(served) !== canonicalize(entry)) {
+  if (
+    served === undefined ||
+    canonicalizeStrict(served) !== canonicalizeStrict(entry)
+  ) {
     throw new LogNotConfirmedError(
       `Resource-log append not confirmed: the served log does not contain ` +
         `the appended entry at ordinal ${ordinal}.`

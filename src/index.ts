@@ -60,4 +60,8 @@ export {
   readResourceLog
 } from './append.js'
 export { latestAssertionRemovalIndex, sealResourceLog } from './seal.js'
-export { vmFragmentOf } from './vmFragment.js'
+export {
+  buildVersionedVm,
+  parseVersionedVm,
+  vmFragmentOf
+} from './vmFragment.js'

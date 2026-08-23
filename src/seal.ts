@@ -53,21 +53,48 @@ export async function latestAssertionRemovalIndex({
 }: {
   controller: ResourceLogController
 }): Promise<number> {
+  // Each version's key set resolves independently; only the pairwise
+  // comparison below is ordered.
+  const keySets = await Promise.all(
+    controller.versionIds.map(versionId =>
+      controller.assertionKeysAt(versionId)
+    )
+  )
   let removalIndex = 0
-  let previous: Set<string> | null = null
-  for (const [index, versionId] of controller.versionIds.entries()) {
-    const keys = await controller.assertionKeysAt(versionId)
-    if (previous !== null) {
-      for (const key of previous) {
-        if (!keys.has(key)) {
-          removalIndex = index
-          break
-        }
+  keySets.forEach((keys, index) => {
+    if (index === 0) {
+      return
+    }
+    for (const key of keySets[index - 1]!) {
+      if (!keys.has(key)) {
+        removalIndex = index
+        break
       }
     }
-    previous = keys
-  }
+  })
   return removalIndex
+}
+
+/**
+ * Whether a head carrying `headControllerVersionIndex` already covers the
+ * removal at `removalIndex`.
+ *
+ * @param options {object}
+ * @param options.headControllerVersionIndex {number | null}
+ * @param options.removalIndex {number}
+ * @returns {boolean}
+ */
+function isSealed({
+  headControllerVersionIndex,
+  removalIndex
+}: {
+  headControllerVersionIndex: number | null
+  removalIndex: number
+}): boolean {
+  return (
+    headControllerVersionIndex !== null &&
+    headControllerVersionIndex >= removalIndex
+  )
 }
 
 /**
@@ -149,10 +176,7 @@ export async function sealResourceLog({
     }
     verified = current.verified
   }
-  if (
-    verified.headControllerVersionIndex !== null &&
-    verified.headControllerVersionIndex >= removalIndex
-  ) {
+  if (isSealed({ ...verified, removalIndex })) {
     return { sealed: false, verified }
   }
   const confirmed = await appendResourceLog({
@@ -166,10 +190,7 @@ export async function sealResourceLog({
     // whose entry already carries a controller version past the removal
     // sealed the log for us.
     buildState: rebased =>
-      rebased.headControllerVersionIndex !== null &&
-      rebased.headControllerVersionIndex >= removalIndex
-        ? null
-        : rebased.head.state,
+      isSealed({ ...rebased, removalIndex }) ? null : rebased.head.state,
     ...(versionTime === undefined ? {} : { versionTime })
   })
   return { sealed: true, verified: confirmed }

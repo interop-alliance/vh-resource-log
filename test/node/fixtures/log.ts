@@ -16,9 +16,10 @@ import {
 } from '@interop/did-method-webvh'
 import { Ed25519VerificationKey } from '@interop/ed25519-verification-key'
 import type { ResourceLogEntry } from '@interop/storage-core'
-import type {
-  ResourceLogController,
-  ResourceLogSigner
+import {
+  buildVersionedVm,
+  type ResourceLogController,
+  type ResourceLogSigner
 } from '../../../src/index.js'
 
 /**
@@ -79,11 +80,12 @@ export function versionedVm({
   controller: ResourceLogController
   keyMultibase: string
 }): string {
-  const controllerVersionId =
-    controller.versionIds[controller.versionIds.length - 1]
-  const query =
-    controllerVersionId === undefined ? '' : `?versionId=${controllerVersionId}`
-  return `${controller.did}${query}#${keyMultibase}`
+  return buildVersionedVm({
+    did: controller.did,
+    controllerVersionId:
+      controller.versionIds[controller.versionIds.length - 1],
+    keyMultibase
+  })
 }
 
 /**

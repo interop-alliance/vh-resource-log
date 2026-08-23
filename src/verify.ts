@@ -36,14 +36,14 @@ import type {
   ResourceLogEntryProof
 } from '@interop/storage-core'
 import type { ResourceLogController } from './controller.js'
-import { resourceLogStateFault } from './entry.js'
+import { resourceLogStateFault, versionIdOrdinal } from './entry.js'
 import {
   ResourceLogClosedError,
   ResourceLogContinuityError,
   ResourceLogIntegrityError
 } from './errors.js'
 import type { ResourceLogHeadPin } from './pin.js'
-import { vmFragmentOf } from './vmFragment.js'
+import { parseVersionedVm } from './vmFragment.js'
 
 /**
  * The five members a log entry carries, exactly.
@@ -298,37 +298,25 @@ function hashInputOf(
 }
 
 /**
- * Splits a proof's `verificationMethod` DID URL into its base DID, its
- * `versionId` DID parameter (the entry's controller versionId), and its
- * fragment (the signing key's multibase).
+ * Splits a proof's `verificationMethod` DID URL with the shared codec,
+ * refusing the entry when the URL is not the profile's versioned shape.
  *
  * @param verificationMethod {string}
  * @param ordinal {number}   the owning entry's 1-based position
  * @returns {object}
  */
-function parseVersionedVm(
+function parseProofVm(
   verificationMethod: string,
   ordinal: number
-): { did: string; controllerVersionId?: string; keyMultibase: string } {
-  const keyMultibase = vmFragmentOf(verificationMethod)
-  if (keyMultibase === undefined) {
+): NonNullable<ReturnType<typeof parseVersionedVm>> {
+  const parsed = parseVersionedVm(verificationMethod)
+  if (parsed === undefined) {
     throw new ResourceLogIntegrityError(
-      `Resource log entry ${ordinal} has a proof verificationMethod without ` +
-        `a key fragment.`
+      `Resource log entry ${ordinal} has a proof verificationMethod that is ` +
+        `not a versioned verification-method DID URL.`
     )
   }
-  const didUrl = verificationMethod.slice(
-    0,
-    verificationMethod.length - keyMultibase.length - 1
-  )
-  const queryIndex = didUrl.indexOf('?')
-  if (queryIndex === -1) {
-    return { did: didUrl, keyMultibase }
-  }
-  const did = didUrl.slice(0, queryIndex)
-  const params = new URLSearchParams(didUrl.slice(queryIndex + 1))
-  const controllerVersionId = params.get('versionId') ?? undefined
-  return { did, controllerVersionId, keyMultibase }
+  return parsed
 }
 
 /**
@@ -462,13 +450,13 @@ async function verifyEntryAgainstHead({
   // map. A malformed DID URL therefore throws from the pre-pass, before any
   // signature check. The map is keyed on the string and is only a cache:
   // `proofKeys` is built from the array itself, one element per proof.
-  const parsed = new Map<string, ReturnType<typeof parseVersionedVm>>()
+  const parsed = new Map<string, ReturnType<typeof parseProofVm>>()
   const parseOnce = (
     verificationMethod: string
-  ): ReturnType<typeof parseVersionedVm> => {
+  ): ReturnType<typeof parseProofVm> => {
     let result = parsed.get(verificationMethod)
     if (result === undefined) {
-      result = parseVersionedVm(verificationMethod, ordinal)
+      result = parseProofVm(verificationMethod, ordinal)
       parsed.set(verificationMethod, result)
     }
     return result
@@ -750,8 +738,8 @@ export async function verifyResourceLog({
         pinnedHead: pin.head
       })
     }
-    const pinnedOrdinal = Number.parseInt(pin.head, 10)
-    if (!Number.isInteger(pinnedOrdinal) || pinnedOrdinal < 1) {
+    const pinnedOrdinal = versionIdOrdinal(pin.head)
+    if (pinnedOrdinal === undefined) {
       throw new ResourceLogContinuityError({
         reason: 'fork',
         pinnedHead: pin.head,

@@ -22,6 +22,7 @@ import {
 } from '@interop/did-method-webvh'
 import type { ResourceLogEntry } from '@interop/storage-core'
 import type { ResourceLogController } from './controller.js'
+import { buildVersionedVm } from './vmFragment.js'
 
 /**
  * The writer's signing seam: its enrolled Ed25519 signing key's multibase
@@ -53,11 +54,27 @@ function versionedVerificationMethod({
   controller: ResourceLogController
   keyMultibase: string
 }): string {
-  const controllerVersionId =
-    controller.versionIds[controller.versionIds.length - 1]
-  const query =
-    controllerVersionId === undefined ? '' : `?versionId=${controllerVersionId}`
-  return `${controller.did}${query}#${keyMultibase}`
+  return buildVersionedVm({
+    did: controller.did,
+    controllerVersionId:
+      controller.versionIds[controller.versionIds.length - 1],
+    keyMultibase
+  })
+}
+
+/**
+ * The 1-based ordinal a `versionId` (or a pinned head) starts with, or
+ * `undefined` when the string does not begin with a positive integer. The
+ * one ordinal reader shared by the entry builder, the append confirmation,
+ * and the pin-continuity check; full `versionId` validation stays with the
+ * kernel's `parseAndValidateVersionId`.
+ *
+ * @param versionId {string}
+ * @returns {number | undefined}
+ */
+export function versionIdOrdinal(versionId: string): number | undefined {
+  const ordinal = Number.parseInt(versionId, 10)
+  return Number.isInteger(ordinal) && ordinal >= 1 ? ordinal : undefined
 }
 
 /**
@@ -250,7 +267,13 @@ export async function buildResourceLogEntry({
 }): Promise<ResourceLogEntry> {
   checkState(state)
   const time = versionTime ?? new Date().toISOString()
-  const headOrdinal = Number.parseInt(head.versionId, 10)
+  const headOrdinal = versionIdOrdinal(head.versionId)
+  if (headOrdinal === undefined) {
+    throw new Error(
+      `Cannot build a resource log entry: the head's versionId ` +
+        `"${head.versionId}" does not start with a 1-based ordinal.`
+    )
+  }
   const ordinal = headOrdinal + 1
   parseAndValidateVersionId(head.versionId, headOrdinal)
   const entryHash = await deriveHash({
