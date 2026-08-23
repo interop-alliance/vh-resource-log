@@ -46,11 +46,12 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 - labels: verify, controller-version, seal
 - verdict: confirmed
 - touches:
-  - vh-resource-log `src/verify.ts`, ARCHITECTURE.md
+  - vh-resource-log `src/verify.ts`, ARCHITECTURE.md,
+    decisions/0002-one-controller-version-per-entry.md
   - encrypted-collections-spec (the spec states the per-entry rule but does not
     say how divergent per-proof `versionId`s reduce to one entry controller
-    version; decide and write it down in `#log-proof`, `#log-authorization`, and
-    `#log-verification` step 5)
+    version; decide and write it down in `#log-proof`, `#log-authorization`,
+    `#log-verification` step 5, and `#log-append`)
   - wallet-core `src/resourceLog/license.ts` (the one-shot license is fed the
     same head controller version)
   - freewallet (direct `^0.3.0` pin on this library plus `link:` on wallet-core;
@@ -58,17 +59,19 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
   - app-connect-spec `decisions/0003-ladder-authority-clauses.md` (the one-shot
     clause gains the per-entry rule)
 - design: designs/VRL-4-entry-controller-version.md
-- design-approved:
+- design-approved: 2026-08-22
 - acceptance:
-  - [ ] Within one entry, each proof's membership is checked at the entry's
-        effective controller version (or the entry is refused when its proofs
-        disagree), rather than at the proof's own controller version against the
-        previous entry's head controller version
-  - [ ] A multi-proof entry carrying a removed member's proof at a controller
-        version below a co-signer's is refused
-  - [ ] Two ladder-signed proofs at one inventory-changing version no longer
-        both pass a one-shot `admitAppend` license
-  - [ ] Multi-proof test cases added to `test/node/resourceLog-verify.test.ts`
+  - [ ] `src/verify.ts` pre-pass implemented per design section 5; every row of
+        the section 4 interaction matrix has a test or is exempted with the
+        exemption recorded
+  - [ ] the consumer list in design section 3 is handled in full (this repo's
+        three raw-input `toEqual` assertions, wallet-core's license, controller,
+        fixture hook, and ten license-test literals, the "exactly two shapes"
+        texts, app-connect-spec decision 0003, the range bumps in publish order)
+  - [ ] the section 7 test plan is green in this repo and wallet-core
+  - [ ] the doc edits in section 5 are made (ARCHITECTURE.md invariants 6 and 12
+        and the glossary, CHANGELOG 0.4.0 breaking, the LEARNINGS.md lesson, and
+        the spec passages in section 8 decision 3 edited by the maintainer)
 
 `src/verify.ts:476`. `headVersionIndex` advances only after `verifyEntryProofs`
 returns, so every proof in an entry is checked against the previous entry's head

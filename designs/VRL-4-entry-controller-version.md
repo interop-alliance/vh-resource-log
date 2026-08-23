@@ -1,12 +1,12 @@
 # VRL-4: Check every proof against the entry's own controller version (design)
 
 - item: VRL-4
-- status: reviewed
-- approved:
+- status: approved
+- approved: 2026-08-22
 - wire-level decisions contained: none (section 5 flags one public hook-input
   member name and one spec-text sentence, neither a wire artifact)
-- decision records extracted: none yet (section 6 marks one do-not-reopen
-  rejection; whether it qualifies for a record is settled at approval)
+- decision records extracted: decisions/0002-one-controller-version-per-entry.md
+  (the max-reduction rejection, section 6)
 
 Review pass run 2026-08-22 (six charters plus a completeness critic). Findings
 are folded into the sections below; the points left for the maintainer are in
@@ -215,7 +215,8 @@ In wallet-core (in-house, same release train):
   (`controller.ts:284-285`), so the refusal fires on the first ladder-key
   proof's call, whichever array position it holds; the drain stops at the first
   throw (`src/verify.ts:554-556`), so exactly one refusal lands. Policy strength
-  is the maintainer's call (section 8).
+  is settled at at most one ladder-key proof per entry (section 8, question 2);
+  a rotation co-signed by a member stays licensed.
 - The "exactly two shapes" statements of the license go stale: the module header
   (`license.ts:4-16`), the predicate JSDoc (`:38-48`), wallet-core
   `ARCHITECTURE.md:560-569`, and the
@@ -247,18 +248,20 @@ Parties-table walk (encrypted-collections-spec AGENTS.md):
 - was-client: zero references to `headControllerVersionIndex` or
   `controllerVersionIndex` in `src/` or `test/`; the log store adapter carries
   no controller-version bookkeeping. Dependency range bump only.
-- encrypted-collections-spec: three passages carry the rule. `#log-proof`
-  (`spec.md:1330-1339`) defines the controller versionId per proof and is where
-  the same-controller-versionId and distinct-keys MUST belongs;
-  `#log-authorization` (`:1345-1347`) defines "the entry's controller version"
-  as the common value; `#log-verification` step 5 (`:1434-1437`) gains the
-  reduction step before membership (maintainer edits, section 8).
+- encrypted-collections-spec: four passages carry the rule (section 8, decision
+  3). `#log-proof` (`spec.md:1330-1339`) defines the controller versionId per
+  proof and is where the same-controller-versionId and distinct-keys MUST
+  belongs; `#log-authorization` (`:1345-1347`) defines "the entry's controller
+  version" as the common value; `#log-verification` step 5 (`:1434-1437`) gains
+  the reduction step before membership; `#log-append` states that a multi-proof
+  entry's proofs are assembled by one writer and all carry that writer's
+  verified head's controller version. The maintainer edits the spec.
 - app-connect-spec: `decisions/0003-ladder-authority-clauses.md:99-106` states
   the license "in exactly two shapes" with the one-shot comparison as the whole
   refinement, and its revisit criterion 2 (`:201-206`) allows extension only as
   a new enumerated shape. The per-entry rule is a refinement inside shape 2, not
-  a loosening; the record gains it (section 5), and section 8 question 2 says so
-  for both policy options.
+  a loosening; the record gains it (section 5), stating the settled at-most-one
+  policy (section 8, question 2).
 - freewallet: a direct consumer, not only a transitive one. It imports this
   library in `src/session/persistence.ts:20`, `annexReach.ts:32`,
   `rosterStore.ts:41`, `keyring.ts:114`, `verifiedLog.ts:38`, and
@@ -291,7 +294,7 @@ columns are today and after. "Same" means outcome and class are identical.
 | Co-signed genesis (index 0)                                                                       | passes; controller versionId is the higher one; no hook               | pre-pass applies; divergent refused; on the create path a refused genesis against an existing log falls through to adoption |
 | Durable log already carrying an entry with divergent controller versionIds (hand-built only)      | readable                                                              | refused from genesis; pin held; no in-library heal; a recreated resource is `scid-switch` until the pin slot is cleared     |
 | Two ladder-key proofs at one inventory-changing version                                           | both pass the license (`headControllerVersionIndex` unspent for each) | `ResourceLogLicenseError` from the first ladder-key proof's hook call, whichever position; one refusal, order-independent   |
-| One ladder-key proof plus one member proof                                                        | licensed                                                              | licensed (one ladder proof); wallet-core's policy choice, section 8                                                         |
+| One ladder-key proof plus one member proof                                                        | licensed                                                              | licensed (one ladder proof; at most one is the settled wallet-core policy, section 8, question 2)                           |
 | Unversioned controller, co-signed entry carrying no controller versionId                          | passes; hook gets `controllerVersionIndex: null`                      | same                                                                                                                        |
 | Unversioned controller, one proof carries a controller versionId                                  | Integrity (controller versionId on an unversioned controller)         | same, from the pre-pass                                                                                                     |
 | Versioned controller, one proof carries no controller versionId                                   | Integrity (no controller versionId)                                   | same, from the pre-pass                                                                                                     |
@@ -393,13 +396,13 @@ wallet-core's "exactly two shapes" texts (`ARCHITECTURE.md:560-569`,
 app-connect-spec `decisions/0003-ladder-authority-clauses.md:99-106` gains the
 same sentence as a refinement inside shape 2 (its revisit criterion 2 forbids
 loosening the one-shot; this tightens it). encrypted-collections-spec
-`#log-proof`, `#log-authorization`, and `#log-verification` step 5 gain the rule
-(section 8, question 3). byoe-ecosystem `LEARNINGS.md` gains a lesson under
-"Cross-repo invariants and gotchas": when a rule is written per entry but
-checked per element, fix the reduction before the check, and do it before the
-kernel's per-element loop, because that loop has no lookahead; and an array
-outside the hash and the signatures is host-mutable in order and multiplicity,
-so its consumers must be set-based.
+`#log-proof`, `#log-authorization`, `#log-verification` step 5, and
+`#log-append` gain the rule (section 8, decision 3). byoe-ecosystem
+`LEARNINGS.md` gains a lesson under "Cross-repo invariants and gotchas": when a
+rule is written per entry but checked per element, fix the reduction before the
+check, and do it before the kernel's per-element loop, because that loop has no
+lookahead; and an array outside the hash and the signatures is host-mutable in
+order and multiplicity, so its consumers must be set-based.
 
 ## 6. Alternatives rejected
 
@@ -413,7 +416,7 @@ so its consumers must be set-based.
   controller versionId, and its proof against its verified head,
   `spec.md:1389-1391`), so a co-signer has no defined assembly step and any
   multi-proof entry is assembled by one party at one time against one view.
-  Do-not-reopen.
+  Do-not-reopen. Recorded in decisions/0002-one-controller-version-per-entry.md.
 - Effective controller version = the minimum. Rejected outright: a removed
   member's low controller versionId would drag the head behind the seal.
 - Advance the head controller version handed to later proofs of the same entry
@@ -476,34 +479,26 @@ gain it, before any new case runs; then a co-signed fixture ported from
 `coSignEntry`; two ladder keys signing one rotation entry at an
 inventory-changing version, refused with `ResourceLogLicenseError` in both array
 orders (one refusal each run, from the first ladder proof's call); a ladder
-proof plus a member proof, licensed (or refused, per section 8 question 2);
-`resourceLog-license`, `resourceLog-seal`, `descriptors`, and
+proof plus a member proof, licensed (at most one ladder proof, section 8,
+question 2); `resourceLog-license`, `resourceLog-seal`, `descriptors`, and
 `keys-rosterLogStore` stay green.
 
-## 8. Open questions
+## 8. Decisions (resolved at approval)
 
-For the maintainer at approval:
-
-1. Hook-input member name: `proofKeys` (recommended; it is the proof array's
-   keys in array order), `entryKeys`, or `coSignerKeys` (the other proofs' keys
-   only, which would make the input position-dependent).
-2. wallet-core policy strength: at most one ladder-key proof per entry
-   (recommended; a rotation co-signed by a member stays licensed), or a
-   ladder-key proof must be the entry's sole proof. The two differ only in where
-   the entry-level check sits: at-most-one counts ladder keys in `proofKeys`
-   inside the ladder gate; sole-proof refuses a ladder proof whenever
-   `proofKeys.length > 1`. Under app-connect-spec decision 0003's revisit
-   criterion 2 both are refinements inside shape 2 (the one-shot), not a new
-   enumerated shape, so the record gains a sentence rather than a shape.
-3. Spec text: `#log-proof` gains "All proofs of an entry MUST carry the same
-   controller version and MUST be by distinct signing keys; a verifier MUST
-   reject an entry whose proofs disagree or repeat a key"; `#log-authorization`
-   defines the entry's controller version as that common value;
-   `#log-verification` step 5 gains the reduction step before membership. Also
-   whether `#log-append` states that a multi-proof entry's proofs are assembled
-   by one writer and all carry that writer's verified head's controller version
-   (recommended; it grounds the do-not-reopen rejection in section 6), or leaves
-   assembly undefined. The maintainer edits the spec; VRL-4's `touches:` entry
-   tracks it.
-4. Release: 0.4.0 labeled breaking (recommended), absorbing the pending 0.3.1
-   entry, or 0.3.1 published first.
+1. Hook-input member name: `proofKeys`.
+2. wallet-core policy strength: at most one ladder-key proof per entry. A
+   rotation co-signed by a member stays licensed. Under app-connect-spec
+   decision 0003's revisit criterion 2 this is a refinement inside shape 2 (the
+   one-shot), not a new enumerated shape, so the record gains a sentence rather
+   than a shape.
+3. Spec text: all four passages named in section 3 are edited. `#log-proof`
+   gains "All proofs of an entry MUST carry the same controller version and MUST
+   be by distinct signing keys; a verifier MUST reject an entry whose proofs
+   disagree or repeat a key"; `#log-authorization` defines the entry's
+   controller version as that common value; `#log-verification` step 5 gains the
+   reduction step before membership; `#log-append` states that a multi-proof
+   entry's proofs are assembled by one writer and all carry that writer's
+   verified head's controller version, which grounds the do-not-reopen rejection
+   in section 6. The maintainer edits the spec; VRL-4's `touches:` entry tracks
+   it.
+4. Release: 0.4.0 labeled breaking, absorbing the pending 0.3.1 entry.
