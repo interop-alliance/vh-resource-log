@@ -716,7 +716,7 @@ describe('appendResourceLog pre-write pass', () => {
     ).rejects.toThrow(
       new ResourceLogIntegrityError(
         'Resource log entry 2 is signed by a key the controller document ' +
-          'does not list under assertionMethod at the anchored version.'
+          'does not list under assertionMethod at the controller version.'
       )
     )
     expect(store._getEntries()).toEqual(before)
@@ -758,9 +758,9 @@ describe('appendResourceLog pre-write pass', () => {
       {
         ordinal: 2,
         keyMultibase: alice.signingKeyMultibase,
-        anchor: '1-v1',
-        anchorIndex: 0,
-        headAnchorIndex: 0
+        controllerVersionId: '1-v1',
+        controllerVersionIndex: 0,
+        headControllerVersionIndex: 0
       }
     ])
   })
@@ -828,17 +828,20 @@ describe('appendResourceLog pre-write pass', () => {
   it('re-verifies the retry against the rebased head after a lost CAS', async () => {
     const { alice, bob, store, pinStore } = await makeRemovalViews()
     // Both clients stay listed at the second version here; what changes is
-    // the head's anchor once bob's entry lands.
+    // the head's controller version once bob's entry lands.
     const both = [alice.signingKeyMultibase, bob.signingKeyMultibase]
     const versions = [
       { versionId: '1-v1', keys: both },
       { versionId: '2-v2', keys: both }
     ]
-    const inputs: Array<{ ordinal: number; headAnchorIndex: number }> = []
+    const inputs: Array<{
+      ordinal: number
+      headControllerVersionIndex: number
+    }> = []
     const controller = fakeController({
       versions,
-      admitAppend: async ({ ordinal, headAnchorIndex }) => {
-        inputs.push({ ordinal, headAnchorIndex })
+      admitAppend: async ({ ordinal, headControllerVersionIndex }) => {
+        inputs.push({ ordinal, headControllerVersionIndex })
       }
     })
     let raced = false
@@ -871,14 +874,15 @@ describe('appendResourceLog pre-write pass', () => {
     })
     expect(confirmed.entries).toHaveLength(3)
     // Attempt 1 verified its candidate (ordinal 2) at the genesis floor;
-    // attempt 2 verified a new candidate (ordinal 3) at bob's anchor.
+    // attempt 2 verified a new candidate (ordinal 3) at bob's controller
+    // version.
     expect(inputs.find(input => input.ordinal === 2)).toEqual({
       ordinal: 2,
-      headAnchorIndex: 0
+      headControllerVersionIndex: 0
     })
     expect(inputs.find(input => input.ordinal === 3)).toEqual({
       ordinal: 3,
-      headAnchorIndex: 1
+      headControllerVersionIndex: 1
     })
   })
 })
@@ -1034,7 +1038,7 @@ describe('sealResourceLog pre-write pass', () => {
     })
     expect(sealed).toBe(true)
     expect(verified?.entries).toHaveLength(2)
-    expect(verified?.headAnchorIndex).toBe(1)
+    expect(verified?.headControllerVersionIndex).toBe(1)
   })
 })
 
@@ -1105,7 +1109,7 @@ describe('verifyResourceLogAppend', () => {
     expect(calls).toBe(0)
   })
 
-  it('refuses an entry anchored behind the head floor', async () => {
+  it('refuses an entry carrying a controller versionId behind the head floor', async () => {
     const alice = await makeLogClient()
     const keys = [alice.signingKeyMultibase]
     const twoVersions = fakeController({
@@ -1117,10 +1121,10 @@ describe('verifyResourceLogAppend', () => {
     const oneVersion = fakeController({
       versions: [{ versionId: '1-v1', keys }]
     })
-    // The head anchors at the second version; the candidate was built by a
-    // writer still holding the one-version view, so it anchors at the first.
+    // The head carries the second version; the candidate was built by a
+    // writer still holding the one-version view, so it carries the first.
     const { genesis, head } = await genesisHead(twoVersions, alice)
-    expect(head.headAnchorIndex).toBe(1)
+    expect(head.headControllerVersionIndex).toBe(1)
     const behind = await buildResourceLogEntry({
       head: genesis,
       state: { type: 'TestState', value: 2 },
@@ -1133,7 +1137,9 @@ describe('verifyResourceLogAppend', () => {
         controller: twoVersions,
         head
       })
-    ).rejects.toThrow(/entry 2 anchors behind its predecessor/)
+    ).rejects.toThrow(
+      /entry 2 carries a controller versionId behind its predecessor/
+    )
   })
 
   it('refuses an entry whose ordinal is not head + 1', async () => {
@@ -1167,34 +1173,34 @@ describe('verifyResourceLogAppend', () => {
       versions: [{ versionId: '1-v1', keys }]
     })
 
-    const anchorless = await genesisHead(unversioned, alice)
-    expect(anchorless.head.headAnchorIndex).toBeNull()
-    const anchorlessNext = await buildResourceLogEntry({
-      head: anchorless.genesis,
+    const unversionedHead = await genesisHead(unversioned, alice)
+    expect(unversionedHead.head.headControllerVersionIndex).toBeNull()
+    const unversionedNext = await buildResourceLogEntry({
+      head: unversionedHead.genesis,
       state: { type: 'TestState', value: 2 },
       controller: unversioned,
       signer: alice.logSigner
     })
     await expect(
       verifyResourceLogAppend({
-        entry: anchorlessNext,
+        entry: unversionedNext,
         controller: versioned,
-        head: anchorless.head
+        head: unversionedHead.head
       })
     ).rejects.toThrow(/verified against an unversioned controller/)
 
-    const anchored = await genesisHead(versioned, alice)
-    const anchoredNext = await buildResourceLogEntry({
-      head: anchored.genesis,
+    const versionedHead = await genesisHead(versioned, alice)
+    const versionedNext = await buildResourceLogEntry({
+      head: versionedHead.genesis,
       state: { type: 'TestState', value: 2 },
       controller: versioned,
       signer: alice.logSigner
     })
     await expect(
       verifyResourceLogAppend({
-        entry: anchoredNext,
+        entry: versionedNext,
         controller: unversioned,
-        head: anchored.head
+        head: versionedHead.head
       })
     ).rejects.toThrow(/verified against a versioned controller/)
   })
@@ -1254,7 +1260,7 @@ describe('verifyResourceLogAppend', () => {
     ).rejects.toThrow(/terminal handover entry's state differs/)
   })
 
-  it('admits an anchorless entry against an unversioned controller', async () => {
+  it('admits an entry carrying no controller versionId against an unversioned controller', async () => {
     const alice = await makeLogClient()
     const controller = fakeController({
       versions: [],

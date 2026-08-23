@@ -4,22 +4,24 @@
 /**
  * The sealing sweep (App Connect spec `#log-authorization`): after a
  * controller-document edit removes a member's append authority, every
- * co-managed resource log must gain an entry anchored at (or past) the
- * post-removal document version -- the "sealing append" that proves the
- * surviving writers extended the log under the new membership. An ordinary
- * post-edit write (a roster rotation) is that append by construction; the gap
- * this module closes is the run where no such write happens -- a rotation
- * that no-ops because the retiree held no current-epoch wrap (an orphan
- * client, or any re-run), leaving the log's head still anchored pre-removal.
+ * co-managed resource log must gain an entry carrying controller version at
+ * (or past) the post-removal document version -- the "sealing append" that
+ * proves the surviving writers extended the log under the new membership. An
+ * ordinary post-edit write (a roster rotation) is that append by
+ * construction; the gap this module closes is the run where no such write
+ * happens -- a rotation that no-ops because the retiree held no
+ * current-epoch wrap (an orphan client, or any re-run), leaving the log's
+ * head still carrying a pre-removal controller version.
  *
  * Both halves are computed from durable state alone, keeping every cascade's
  * no-checkpoint convergence rule: the membership change is read off the
  * controller view (the latest version whose `assertionMethod` set lost a
  * member against its predecessor -- only assertion removals affect append
  * authority, so a spent recovery code's `keyAgreement`-only method never
- * registers here), and the log's side is the verified head's effective anchor
- * ({@link VerifiedResourceLog}`.headAnchorIndex`). "Sealed" is simply "head
- * anchor at or past the removal", so the backstop append is idempotent and a
+ * registers here), and the log's side is the verified head's effective
+ * controller version ({@link VerifiedResourceLog}`.headControllerVersionIndex`).
+ * "Sealed" is simply "head controller version at or past the removal", so
+ * the backstop append is idempotent and a
  * torn sweep is finished by a naive re-run by any surviving member (the
  * append path's pre-write pass refuses a sweep driven by the removed member
  * before anything is written).
@@ -36,7 +38,8 @@ import type { VerifiedResourceLog } from './verify.js'
  * `controller.versionIds` whose `assertionMethod` key set LOST a member
  * against its predecessor's, or `0` when no version ever removed one (the
  * genesis version has no predecessor and can never register as a removal, so
- * `0` doubles as "nothing to seal against" -- every anchor satisfies it). An
+ * `0` doubles as "nothing to seal against" -- every controller version
+ * satisfies it). An
  * unversioned controller resolves `0` for the same reason: with no version
  * history there is no removal to locate.
  *
@@ -69,11 +72,12 @@ export async function latestAssertionRemovalIndex({
 
 /**
  * Seals one resource log against the controller's latest membership change,
- * idempotently: when the verified head already anchors at or past the latest
- * `assertionMethod` removal (or the controller never removed one, or the log
- * does not exist yet, or the controller is unversioned) nothing is written;
- * otherwise the head state is re-appended VERBATIM as a no-op entry whose
- * only job is its post-removal anchor -- ordinary entries may repeat state
+ * idempotently: when the verified head already carries a controller version
+ * at or past the latest `assertionMethod` removal (or the controller never
+ * removed one, or the log does not exist yet, or the controller is
+ * unversioned) nothing is written; otherwise the head state is re-appended
+ * VERBATIM as a no-op entry whose only job is its post-removal controller
+ * version -- ordinary entries may repeat state
  * (only terminal entries are state-constrained), so the resource itself is
  * untouched. A closed log that needs sealing propagates the append path's
  * `ResourceLogClosedError`.
@@ -98,8 +102,9 @@ export async function latestAssertionRemovalIndex({
  * @param [options.verified] {VerifiedResourceLog}   a log view the caller
  *   verified moments ago (the most recent read or confirmed append on the same
  *   store), letting the sweep skip its own read. Staleness is safe in both
- *   directions: entry anchors are verifier-enforced monotone, so a stale head
- *   anchoring at or past the removal means the true head does too, and an
+ *   directions: entry controller versionIds are verifier-enforced monotone,
+ *   so a stale head carrying a controller version at or past the removal
+ *   means the true head does too, and an
  *   unsealed verdict is re-checked by the append path's own read before
  *   anything is written
  * @returns {Promise<{ sealed: boolean, verified: VerifiedResourceLog | null }>}
@@ -145,8 +150,8 @@ export async function sealResourceLog({
     verified = current.verified
   }
   if (
-    verified.headAnchorIndex !== null &&
-    verified.headAnchorIndex >= removalIndex
+    verified.headControllerVersionIndex !== null &&
+    verified.headControllerVersionIndex >= removalIndex
   ) {
     return { sealed: false, verified }
   }
@@ -158,10 +163,11 @@ export async function sealResourceLog({
     logId,
     signer,
     // The rebase hook doubles as the convergence check: a concurrent writer
-    // whose entry already anchors past the removal sealed the log for us.
+    // whose entry already carries a controller version past the removal
+    // sealed the log for us.
     buildState: rebased =>
-      rebased.headAnchorIndex !== null &&
-      rebased.headAnchorIndex >= removalIndex
+      rebased.headControllerVersionIndex !== null &&
+      rebased.headControllerVersionIndex >= removalIndex
         ? null
         : rebased.head.state,
     ...(versionTime === undefined ? {} : { versionTime })

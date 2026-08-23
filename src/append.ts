@@ -4,7 +4,7 @@
 /**
  * The append path (App Connect spec `#log-append`): read the full log and
  * verify it (an entry is never built on an unverified head), build the new
- * entry against the verified head anchored at the writer's current verified
+ * entry carrying the controller versionId at the writer's current verified
  * controller head, verify the candidate as a reader would before sending it
  * (`verifyResourceLogAppend`: a refused entry poisons the log for every
  * reader and cannot be removed, so the writer refuses first), write
@@ -216,7 +216,8 @@ export async function appendResourceLog({
  * through an ordinary {@link appendResourceLog}. First contact is where the
  * pin is established, so the pin store is written either way. Before
  * `store.create`, the built genesis is verified as a one-entry log (the
- * membership and anchor rules at the genesis's anchor, no pin); a refusal
+ * membership and controller-version rules at the genesis's controller
+ * versionId, no pin); a refusal
  * throws `ResourceLogIntegrityError` and creates nothing, unless a log
  * already exists, in which case the lost-race branch adopts it.
  *

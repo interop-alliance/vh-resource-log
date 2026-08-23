@@ -1,6 +1,16 @@
 # @interop/vh-resource-log Changelog
 
-## 0.3.1 - TBD
+## 0.4.0 - TBD
+
+### Changed
+
+- **BREAKING**: Renamed "anchor" to "controller versionId" throughout the
+  library. `VerifiedResourceLog.headAnchorIndex` is now
+  `headControllerVersionIndex`; the `admitAppend` hook input's `anchor` and
+  `anchorIndex` are now `controllerVersionId` and `controllerVersionIndex`.
+  Integrity error messages that referred to an entry's "anchor" now refer to
+  its controller versionId. Docs use "controller versionId" in place of
+  "anchor".
 
 ### Fixed
 

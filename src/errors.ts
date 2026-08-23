@@ -64,7 +64,7 @@
 /**
  * A served log failed verification: an unparseable body, malformed entries, a
  * non-verifying SCID, a broken hash chain, a failing proof, or a signer the
- * controller document does not back at the entry's anchored version.
+ * controller document does not back at the entry's controller versionId.
  * Fabrication-class: refused as something no enrolled client produced. Also
  * thrown about the writer's own candidate entry when the pre-write pass
  * (`verifyResourceLogAppend`, or the genesis pass in `createResourceLog`)

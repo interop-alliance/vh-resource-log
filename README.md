@@ -26,8 +26,8 @@ signing entries, verifying a served log end to end (shape, SCID, chain hashes,
 proofs, external authorization against a caller-supplied verified controller
 view), refusing rollbacks and forks against a durable chain-head pin, appending
 through a compare-and-swap store port with rebase-and-retry and read-back
-confirmation, and the sealing sweep that re-anchors a log after a
-controller-membership removal.
+confirmation, and the sealing sweep that carries a log's controller version
+forward after a controller-membership removal.
 
 What deliberately lives elsewhere: the wire types in `@interop/storage-core`;
 the hashing and proof kernel in `@interop/did-method-webvh`; the WAS binding of

@@ -63,30 +63,32 @@ export async function makeLogClient(): Promise<LogTestClient> {
 }
 
 /**
- * The writer's anchored verification-method DID URL, exactly as the entry
- * builders construct it: the anchor is the controller's verified head (omitted
- * for an unversioned controller).
+ * The writer's versioned verification-method DID URL, exactly as the entry
+ * builders construct it: the controller versionId is the controller's
+ * verified head (omitted for an unversioned controller).
  *
  * @param options {object}
  * @param options.controller {ResourceLogController}
  * @param options.keyMultibase {string}
  * @returns {string}
  */
-export function anchoredVm({
+export function versionedVm({
   controller,
   keyMultibase
 }: {
   controller: ResourceLogController
   keyMultibase: string
 }): string {
-  const anchor = controller.versionIds[controller.versionIds.length - 1]
-  const query = anchor === undefined ? '' : `?versionId=${anchor}`
+  const controllerVersionId =
+    controller.versionIds[controller.versionIds.length - 1]
+  const query =
+    controllerVersionId === undefined ? '' : `?versionId=${controllerVersionId}`
   return `${controller.did}${query}#${keyMultibase}`
 }
 
 /**
  * Co-signs an already-signed entry: returns it with one more proof appended,
- * signed by `signer` under its anchored verification method and carrying the
+ * signed by `signer` under its versioned verification method and carrying the
  * entry's own `versionTime` as the proof's `created` time. Multi-proof entries
  * are legal in the profile, and the added proof sits in a later array
  * position -- the placement a per-entry admission hook would never see.
@@ -110,7 +112,7 @@ export async function coSignEntry({
   const coSignature = await signDataIntegrityProof(
     unsigned,
     createDataIntegrityProofTemplate({
-      verificationMethod: anchoredVm({
+      verificationMethod: versionedVm({
         controller,
         keyMultibase: signer.keyMultibase
       }),
@@ -171,7 +173,7 @@ export async function buildTerminalEntry({
   const proof = await signDataIntegrityProof(
     entry,
     createDataIntegrityProofTemplate({
-      verificationMethod: anchoredVm({
+      verificationMethod: versionedVm({
         controller,
         keyMultibase: signer.keyMultibase
       }),

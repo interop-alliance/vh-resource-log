@@ -5,8 +5,8 @@
  * broken chain, forged SCID) is refused as integrity failure; a served log
  * that verifies but conflicts with the chain-head pin (rollback, fork with
  * evidence retention, SCID/method switch) is refused as continuity failure;
- * the external-authorization rule is checked at the anchored controller
- * version with anchor monotonicity (the revoked-signer-after-seal case);
+ * the external-authorization rule is checked at the controller version with
+ * controller-version monotonicity (the revoked-signer-after-seal case);
  * terminal handover entries close the log; and handover links verify from
  * both sides.
  */
@@ -89,7 +89,7 @@ describe('verifyResourceLog (positive paths)', () => {
     expect(verified.pin.head).toBe(entries[1]!.versionId)
   })
 
-  it('verifies an unversioned-controller log with anchorless proofs', async () => {
+  it('verifies an unversioned-controller log with unversioned proofs', async () => {
     const alice = await makeLogClient()
     const controller = fakeController({
       versions: [],
@@ -219,7 +219,7 @@ describe('verifyResourceLog (fabrication refusals)', () => {
     ).rejects.toThrow(/different controller/)
   })
 
-  it('refuses an anchorless proof against a versioned controller', async () => {
+  it('refuses an unversioned proof against a versioned controller', async () => {
     const alice = await makeLogClient()
     const unversioned = fakeController({
       versions: [],
@@ -240,10 +240,10 @@ describe('verifyResourceLog (fabrication refusals)', () => {
         controller: versioned,
         expectedMethod: METHOD
       })
-    ).rejects.toThrow(/no entry anchor/)
+    ).rejects.toThrow(/no controller versionId/)
   })
 
-  it('refuses an anchored proof against an unversioned controller', async () => {
+  it('refuses a versioned proof against an unversioned controller', async () => {
     const { alice, genesis } = await makeBaselineLog()
     const unversioned = fakeController({
       versions: [],
@@ -258,7 +258,7 @@ describe('verifyResourceLog (fabrication refusals)', () => {
     ).rejects.toThrow(/unversioned controller/)
   })
 
-  it('refuses an anchor naming an unknown controller version', async () => {
+  it('refuses a controller versionId naming an unknown controller version', async () => {
     const { alice, genesis } = await makeBaselineLog()
     const otherVersions = fakeController({
       versions: [
@@ -274,10 +274,11 @@ describe('verifyResourceLog (fabrication refusals)', () => {
     ).rejects.toThrow(/unknown controller/)
   })
 
-  it('refuses a revoked signer anchoring behind the seal (anchor monotonicity)', async () => {
+  it('refuses a revoked signer whose controller versionId is behind the seal (controller-version monotonicity)', async () => {
     // Controller v1 backs alice AND bob; v2 drops bob (the revocation edit).
-    // Alice's sealing append anchors at v2; bob then appends anchored at v1,
-    // where his key still has membership -- monotonicity is what refuses it.
+    // Alice's sealing append carries controller version v2; bob then appends
+    // carrying controller version v1, where his key still has membership --
+    // monotonicity is what refuses it.
     const alice = await makeLogClient()
     const bob = await makeLogClient()
     const v1Only = fakeController({
@@ -323,7 +324,7 @@ describe('verifyResourceLog (fabrication refusals)', () => {
         expectedMethod: METHOD
       })
     ).resolves.toBeDefined()
-    // ...and bob's v1-anchored continuation is refused.
+    // ...and bob's v1-versioned continuation is refused.
     await expect(
       verifyResourceLog({
         entries: [genesis, seal, behindSeal],

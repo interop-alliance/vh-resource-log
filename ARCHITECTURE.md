@@ -74,7 +74,7 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    (multi-proof entries are legal, so a per-entry call would admit an unadmitted
    proof in a later array position), after `assertionMethod` membership passes,
    after every proof of the entry has verified cryptographically, and before the
-   anchor floor advances, for every entry past genesis. The hook is also
+   version floor advances, for every entry past genesis. The hook is also
    consulted on the writer's own candidate entry before the write
    (`verifyResourceLogAppend`, run by `appendResourceLog` on every
    compare-and-swap attempt), after the candidate's proofs verify. It is
@@ -110,19 +110,20 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    `src/errors.ts`'s header.
 10. **Sealing is computed from durable state alone.** The membership change is
     read off the controller view and the log's side off the verified head's
-    effective anchor, so the backstop append is idempotent and a torn sweep is
-    finished by a naive re-run by any surviving member. The sweep exists because
-    an ordinary post-edit write is the sealing append by construction; the gap
-    is the run where no such write happens (a rotation that no-ops because the
-    retiree held no current-epoch wrap), leaving the log's head still anchored
-    pre-removal. A sweep that would write is refused pre-write when the sweeping
+    effective controller version, so the backstop append is idempotent and a
+    torn sweep is finished by a naive re-run by any surviving member. The sweep
+    exists because an ordinary post-edit write is the sealing append by
+    construction; the gap is the run where no such write happens (a rotation
+    that no-ops because the retiree held no current-epoch wrap), leaving the
+    log's head still at a controller version from before the removal. A sweep
+    that would write is refused pre-write when the sweeping
     client is the removed member (invariant 11); the convergence branch, which
     writes nothing, still runs before the pass. The wallet-side ceremonies that
     drive it stay in `@interop/wallet-core`.
 11. **The write path refuses before the host does.** Before `store.append` or
     `store.create`, the candidate entry is verified as the reader would verify
     it at its ordinal (shape, hash chain to the head, proofs, the authorization
-    rule at the head's anchor floor, the `admitAppend` hook, the terminal-entry
+    rule at the head's version floor, the `admitAppend` hook, the terminal-entry
     rules), against a controller view at or past the one the head was verified
     with, so an honest writer does not send an entry it would itself refuse on
     read-back -- one refused entry rejects the whole log for every reader
@@ -159,6 +160,186 @@ was-client and wallet-core depend on this library; nothing here depends on them.
   is `verifyResourceLogAppend` in this library; a consumer with its own write
   path (wallet-core's `rosterLogStore.replace`) calls it rather than re-deriving
   any reader rule.
+
+## Glossary
+
+The repo's domain vocabulary: one canonical term per concept, used the same way
+in code, tests, docs, commit messages, and conversation. A repo is one bounded
+context; when a term carries a different meaning in a neighbouring repo, the
+entry says so and points at that repo's glossary. Entries say what a term is and
+where it lives. How it works belongs to the invariant or module that describes
+the mechanism. The convention is canonical in isomorphic-lib-template's
+ARCHITECTURE.md Glossary section.
+
+### The log and its entries
+
+- **Resource log** -- one resource's complete history under the Resource Log
+  Profile: a hash-chained, signed, append-only JSON Lines file whose verified
+  head's `state` is the resource's current state. The profile's client side is
+  this library (decision 0001). Avoid: history, audit log, did log.
+- **Entry** -- one line of a resource log, carrying exactly `versionId`,
+  `versionTime`, `parameters`, `state`, and `proof` (`verify.ts`). Avoid:
+  record, event, version.
+- **Genesis entry** -- the first entry, whose `parameters` carry the format
+  identifier and the SCID (plus `previousLog` on a handover successor). Built by
+  the two-pass SCID construction in `entry.ts`. Avoid: root entry, initial
+  entry.
+- **Ordinal** -- an entry's 1-based position in the log, the integer prefix of
+  its `versionId`. Refusal messages name the candidate's would-be ordinal.
+  Avoid: index, sequence number, line number.
+- **SCID** -- the log's self-certifying identifier, computed by the did:webvh
+  kernel over the genesis entry and recorded in the chain-head pin. The
+  construction is `@interop/did-method-webvh`'s and is not re-derived here.
+- **Format identifier** -- the `parameters.method` string of the genesis entry
+  (`resource-log:0.1`, `RESOURCE_LOG_METHOD` in `@interop/storage-core`). A
+  reader passes the one it expects as `expectedMethod`. Avoid: profile version,
+  method string.
+- **Verified head** -- the last entry of a log after full verification, the only
+  head an entry is ever built on or a pin advanced to (invariant 1). A "stated
+  head" is anything the host serves as a summary; the verifier never accepts one
+  (invariant 2). Avoid: tip, latest entry, current entry.
+- **Candidate entry** -- the entry a writer has built against the verified head
+  but not yet sent; the pre-write pass runs over it. Avoid: draft, pending
+  entry.
+- **State** -- an entry's `state` member: a non-null object with a string `type`
+  schema identifier and no `history` member (`resourceLogStateFault`, shared by
+  the builders and the reader). Avoid: payload, body, document.
+- **Terminal entry** -- the entry that closes a log: the only non-genesis entry
+  with `parameters`, exactly `{ nextLog: { method, scid } }`, and a `state`
+  equal to its predecessor's. A log whose verified head is terminal is "closed"
+  and appends refuse with `ResourceLogClosedError`. Avoid: tombstone, migration
+  entry, final entry.
+- **Handover** -- the move of a resource's history to a successor log: the
+  closed log's terminal entry names the successor, and the successor's genesis
+  names the closed log in `previousLog`. The one transition across which a pin's
+  SCID or method may change (`verifyResourceLogHandover`). Avoid: migration,
+  rotation.
+
+### Authority
+
+- **Controller view** -- the `ResourceLogController` port: what verification
+  consumes of the independently verified controller document (the DID, the
+  ordered `versionIds`, `assertionKeysAt`, and the optional admission hook). The
+  caller builds it from a document it has already verified; the port carries no
+  resolution (invariant 5). The did:webvh adapter over a wallet account document
+  lives in `@interop/wallet-core`. Avoid: resolver, controller document (the
+  thing the view is taken from), DID document.
+- **Unversioned controller** -- a controller view with an empty `versionIds` (a
+  static controller). Entries under it carry no controller versionId and every
+  controller-version rule degrades to current-document verification.
+- **Controller versionId** -- the controller-log version a proof names through
+  the `versionId` DID parameter on its `verificationMethod`: the controller
+  head as the writer last verified it, and the version at which
+  `assertionMethod` membership is checked on read. Expressed inside the
+  verifier as an index into the controller view's `versionIds`. Avoid:
+  checkpoint, pinned version, anchor.
+- **Version floor** -- the verifier's running minimum as it walks the log: the
+  controller version index the verified predecessor entries left behind. An
+  entry's controller versionId must be at or past it (controller-version
+  monotonicity), and it advances after the entry passes. The hook sees it as
+  `headControllerVersionIndex`. Avoid: watermark, high-water mark, anchor
+  floor.
+- **Effective controller version** -- the version floor after the whole loop,
+  which monotonicity makes the verified head's own controller version
+  (`VerifiedResourceLog.headControllerVersionIndex`). The sealing sweep
+  compares it against the controller's latest membership change. Avoid: head
+  version, effective anchor.
+- **Authorization rule** -- the profile's whole append-authority test: the
+  proof's key is a member of `assertionMethod` at the controller version it
+  carries. It is checked against that version on purpose, so a signature made
+  while the key was listed verifies forever. The server-side counterpart, which
+  checks the document as resolved now, is the current-key-set rule in
+  freewallet's and wallet-core's glossaries; the two are deliberately
+  asymmetric. Avoid: current-key-set rule (for this rule), membership check.
+- **Admission hook** -- the controller view's optional `admitAppend`: the
+  per-proof seam through which controller-domain append policy reaches the
+  verifier (invariant 6). This library carries no policy of its own; the policy
+  wallet-core supplies through it is the ceremony-tail license, which reasons
+  about ladder keys and inventory (terms of wallet-core's glossary, not this
+  one). Avoid: policy callback, authorizer, license (the license is one hook's
+  content).
+- **Writer** -- the client appending an entry, signing under its enrolled
+  Ed25519 key through the `ResourceLogSigner` seam. Identified on the wire only
+  by the key's multibase fragment. Not wallet-core's `writerId`, which is an
+  unkeyed attribution label for revision history and names nothing here. Avoid:
+  author, device, client (wallet-core's term for the keyed identity).
+- **Kernel** -- the did:webvh log kernel in `@interop/did-method-webvh`: entry
+  hashing, `versionId` and SCID construction, proof creation and verification,
+  consumed as named imports and never re-derived.
+
+### Continuity
+
+- **Chain-head pin** -- a client's durable per-log record of the log's verified
+  identity and latest verified head: `{ method, scid, head }`
+  (`ResourceLogHeadPin`). Established at first contact, advanced only past a
+  full verification, replaced only across a verified handover (invariant 3).
+  Avoid: checkpoint, head cache, trust anchor.
+- **Pin slot** -- the keyed place a `ResourceLogPinStore` holds one log's pin,
+  named by the `logId` the library derives with `resourceLogPinId` (invariant
+  4). Wallet-core's named builders (`accountLogPinId`, and siblings) wrap it.
+  Avoid: pin key, storage key.
+- **Continuity** -- the relation a served log must hold to the pin: same method
+  and SCID, and a history that descends from the pinned head. Its failures are
+  the `ResourceLogContinuityError` kinds (rollback, fork, scid-switch,
+  method-switch). Avoid: consistency, freshness.
+- **Fork evidence** -- the served entries a fork refusal keeps on the error: two
+  signed histories sharing a prefix and diverging, transferable as proof of the
+  host's equivocation. Avoid: conflict log.
+
+### The write path
+
+- **Validator** -- the opaque `etag` a store read returns and the next append is
+  conditioned on (`ifMatch`). An absent or empty validator forbids the append
+  (invariant 8). Avoid: version tag, revision.
+- **Compare-and-swap append** -- the conditional write `ResourceLogStore.append`
+  performs against the validator; a stale validator is a lost race, surfaced as
+  `ResourceLogConflictError`. Avoid: optimistic lock, conditional PUT (the WAS
+  adapter's transport term).
+- **Rebase** -- the caller's response to a lost race: re-read, re-verify,
+  rebuild the candidate on the new verified head, retry (`appendResourceLog`).
+  Avoid: merge, replay.
+- **Lost race** -- a concurrent writer got there first: a stale validator on
+  append, or an existing log on create. Benign; on create the winner's log is
+  adopted. Avoid: collision, failure.
+- **Pre-write pass** -- `verifyResourceLogAppend`, the reader's per-entry checks
+  run over the candidate before `store.append` or `store.create`, so a writer
+  refuses what it would refuse on read-back (invariant 11). Avoid: preflight,
+  dry run, self-check.
+- **Read-back confirmation** -- `confirmAppend`: after an acknowledged append,
+  read the log back and check the entry is in the served history at its ordinal;
+  the only evidence an append is durable (invariant 7). Its failure is
+  `LogNotConfirmedError`. Avoid: ack, receipt.
+
+### Sealing
+
+- **Membership change** -- a controller version whose `assertionMethod` set lost
+  a member against its predecessor; the latest one is
+  `latestAssertionRemovalIndex`. Only assertion removals count, so a
+  `keyAgreement`-only method leaving the document never registers. Avoid:
+  revocation event, roster change.
+- **Sealing append** -- an entry carrying a controller version at or past the
+  latest membership change, proving the surviving writers extended the log
+  under the new membership. Any ordinary post-edit write is one by
+  construction. Avoid: fence, checkpoint.
+- **Sealing sweep** -- `sealResourceLog`, the idempotent backstop that writes a
+  sealing append (a verbatim re-append of the head state) only when the
+  effective controller version is still pre-removal (invariant 10). A log is
+  "sealed" when its effective controller version is at or past the latest
+  membership change. Avoid: reseal, cleanup.
+
+### Refusals
+
+- **Refusal class** -- one of the library's error names, each a contract
+  (invariant 9): Integrity (the served log is doctored, truncated, or
+  unauthorized), Continuity (the log disagrees with the pin), Closed (the head
+  is terminal), NotConfirmed (read-back did not show the entry), and Conflict (a
+  lost race). The ratified list is in `src/errors.ts`'s header. Avoid: error
+  type, failure mode.
+- **Port** -- one of the library's three seams a consumer implements or
+  supplies: `ResourceLogStore`, `ResourceLogPinStore`, and
+  `ResourceLogController`. An implementation of a port is an adapter
+  (was-client's `resourceLogStore`, wallet-core's `webvhResourceLogController`).
+  Avoid: seam, interface, backend.
 
 ## Current State labels
 

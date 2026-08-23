@@ -75,9 +75,9 @@ describe('the admitAppend admission hook', () => {
       {
         ordinal: 2,
         keyMultibase: alice.signingKeyMultibase,
-        anchor: '1-v1',
-        anchorIndex: 0,
-        headAnchorIndex: 0
+        controllerVersionId: '1-v1',
+        controllerVersionIndex: 0,
+        headControllerVersionIndex: 0
       }
     ])
   })
@@ -275,7 +275,7 @@ describe('the admitAppend admission hook', () => {
     ).rejects.toBeInstanceOf(ResourceLogIntegrityError)
   })
 
-  it("hands the hook the anchor floor of the entries before it, not the entry's own anchor", async () => {
+  it("hands the hook the version floor of the entries before it, not the entry's own controller versionId", async () => {
     const alice = await makeLogClient()
     const bob = await makeLogClient()
     const versions = [
@@ -286,8 +286,8 @@ describe('the admitAppend admission hook', () => {
       }
     ]
     // Entries 1 and 2 are built against a view carrying only 1-v1, so they
-    // anchor there (index 0); entry 3 is built against the full view and
-    // anchors at 2-v2 (index 1).
+    // carry that controller version (index 0); entry 3 is built against the
+    // full view and carries controller version 2-v2 (index 1).
     const atFirstVersion = fakeController({ versions: [versions[0]!] })
     const [genesis, second] = await makeTwoEntryLog(
       atFirstVersion,
@@ -307,13 +307,21 @@ describe('the admitAppend admission hook', () => {
     })
     const seen: Array<{
       ordinal: number
-      anchorIndex: number | null
-      headAnchorIndex: number
+      controllerVersionIndex: number | null
+      headControllerVersionIndex: number
     }> = []
     const watching = fakeController({
       versions,
-      admitAppend: async ({ ordinal, anchorIndex, headAnchorIndex }) => {
-        seen.push({ ordinal, anchorIndex, headAnchorIndex })
+      admitAppend: async ({
+        ordinal,
+        controllerVersionIndex,
+        headControllerVersionIndex
+      }) => {
+        seen.push({
+          ordinal,
+          controllerVersionIndex,
+          headControllerVersionIndex
+        })
       }
     })
     await verifyResourceLog({
@@ -321,17 +329,20 @@ describe('the admitAppend admission hook', () => {
       controller: watching,
       expectedMethod: METHOD
     })
-    // headAnchorIndex is the floor the previous entries left behind, so entry
-    // 3 still sees 0 (entry 2's anchor) even though it anchors at index 1: the
-    // drain runs before the floor advances.
+    // headControllerVersionIndex is the floor the previous entries left
+    // behind, so entry 3 still sees 0 (entry 2's controller version) even
+    // though it carries controller version index 1: the drain runs before
+    // the floor advances.
     expect(seen).toEqual([
-      { ordinal: 2, anchorIndex: 0, headAnchorIndex: 0 },
-      { ordinal: 3, anchorIndex: 1, headAnchorIndex: 0 },
-      { ordinal: 3, anchorIndex: 1, headAnchorIndex: 0 }
+      { ordinal: 2, controllerVersionIndex: 0, headControllerVersionIndex: 0 },
+      { ordinal: 3, controllerVersionIndex: 1, headControllerVersionIndex: 0 },
+      { ordinal: 3, controllerVersionIndex: 1, headControllerVersionIndex: 0 }
     ])
     // Both proofs of entry 3 read the same floor: it does not move between
     // one proof of an entry and the next.
-    expect(seen[1]!.headAnchorIndex).toBe(seen[2]!.headAnchorIndex)
+    expect(seen[1]!.headControllerVersionIndex).toBe(
+      seen[2]!.headControllerVersionIndex
+    )
   })
 
   it('refuses an entry served with an empty proof array before any admission', async () => {

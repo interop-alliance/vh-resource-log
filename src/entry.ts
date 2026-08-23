@@ -4,9 +4,10 @@
 /**
  * Resource-log entry construction: the two-pass SCID genesis build and the
  * ordinary next-entry build, both signed under the writer's enrolled Ed25519
- * key with the entry anchor riding as a `versionId` DID parameter on the
- * proof's `verificationMethod` -- the writer anchors at the head of the
- * controller document as it last verified it. All hashing and proof
+ * key with the entry's controller versionId riding as a `versionId` DID
+ * parameter on the proof's `verificationMethod` -- the writer carries the
+ * controller version at the head of the controller document as it last
+ * verified it. All hashing and proof
  * construction comes from the did:webvh log kernel; nothing is re-derived
  * here.
  */
@@ -27,7 +28,7 @@ import type { ResourceLogController } from './controller.js'
  * (the fragment of its verification method in the controller document) and a
  * raw detached-signature hook over it. The multibase names the key in the
  * proof's `verificationMethod`; membership under `assertionMethod` at the
- * anchored version is what authorizes the append.
+ * controller version is what authorizes the append.
  */
 export interface ResourceLogSigner {
   keyMultibase: string
@@ -35,25 +36,27 @@ export interface ResourceLogSigner {
 }
 
 /**
- * The writer's anchored verification-method DID URL: the controller DID, the
- * anchor at the controller's verified head as a `versionId` DID parameter
- * (omitted for an unversioned controller), and the signing key's multibase as
- * the fragment.
+ * The writer's versioned verification-method DID URL: the controller DID, the
+ * controller versionId at the controller's verified head as a `versionId`
+ * DID parameter (omitted for an unversioned controller), and the signing
+ * key's multibase as the fragment.
  *
  * @param options {object}
  * @param options.controller {ResourceLogController}
  * @param options.keyMultibase {string}
  * @returns {string}
  */
-function anchoredVerificationMethod({
+function versionedVerificationMethod({
   controller,
   keyMultibase
 }: {
   controller: ResourceLogController
   keyMultibase: string
 }): string {
-  const anchor = controller.versionIds[controller.versionIds.length - 1]
-  const query = anchor === undefined ? '' : `?versionId=${anchor}`
+  const controllerVersionId =
+    controller.versionIds[controller.versionIds.length - 1]
+  const query =
+    controllerVersionId === undefined ? '' : `?versionId=${controllerVersionId}`
   return `${controller.did}${query}#${keyMultibase}`
 }
 
@@ -114,7 +117,7 @@ function checkState(state: ResourceLogEntry['state']): void {
  * @param options {object}
  * @param options.entry {object}   the entry, `proof` absent
  * @param options.signer {ResourceLogSigner}
- * @param options.verificationMethod {string}   the anchored DID URL
+ * @param options.verificationMethod {string}   the versioned DID URL
  * @param options.created {string}   the proof timestamp
  * @returns {Promise<ResourceLogEntry>}
  */
@@ -159,7 +162,7 @@ async function signEntry({
  * @param options.method {string}   the format identifier
  *   (`RESOURCE_LOG_METHOD`)
  * @param options.controller {ResourceLogController}   the verified controller
- *   view -- the anchor source
+ *   view -- the controller versionId source
  * @param options.signer {ResourceLogSigner}
  * @param [options.previousLog] {object}   handover successors only: the prior
  *   log's SCID and the `versionId` of its terminal entry's predecessor
@@ -209,7 +212,7 @@ export async function buildResourceLogGenesis({
       state
     },
     signer,
-    verificationMethod: anchoredVerificationMethod({
+    verificationMethod: versionedVerificationMethod({
       controller,
       keyMultibase: signer.keyMultibase
     }),
@@ -220,8 +223,9 @@ export async function buildResourceLogGenesis({
 /**
  * Builds and signs the next ordinary entry against a verified head: full
  * state, empty `parameters`, hash chained off the head's `versionId`, proof
- * anchored at the controller's verified head. Callers hold a verified head
- * by construction (an entry is never built on an unverified one).
+ * carrying the controller's verified-head controller versionId. Callers hold
+ * a verified head by construction (an entry is never built on an unverified
+ * one).
  *
  * @param options {object}
  * @param options.head {ResourceLogEntry}   the verified head entry
@@ -263,7 +267,7 @@ export async function buildResourceLogEntry({
       state
     },
     signer,
-    verificationMethod: anchoredVerificationMethod({
+    verificationMethod: versionedVerificationMethod({
       controller,
       keyMultibase: signer.keyMultibase
     }),

@@ -9,7 +9,7 @@
  * version list, per-version `assertionMethod` membership, and (optionally)
  * a per-proof admission hook for controller-domain append policy -- and the
  * caller builds it from an already-verified controller document, answering
- * anchored-version lookups from that verified history rather than from any
+ * controller-version lookups from that verified history rather than from any
  * wire fetch. Handing the verifier a view instead of a resolver is what
  * enforces the profile's rule that controller-document material never comes
  * from the channel the log came from. The did:webvh adapter over an account
@@ -21,7 +21,8 @@
  * What log verification consumes of the independently verified controller
  * document: the DID the entry proofs must sign under, the verified controller
  * log's `versionId` list in order (empty for an unversioned static
- * controller, degrading every anchor rule to current-document verification),
+ * controller, degrading every controller-version rule to current-document
+ * verification),
  * the set of `assertionMethod` key multibases at a given version --
  * membership there is the whole authorization rule, so `keyAgreement`-only
  * recovery keys and `authentication`-only convenience keys are excluded
@@ -34,9 +35,9 @@ export interface ResourceLogController {
    * The verified controller log's `versionId` list in order. Precondition:
    * distinct entries, and append-only across resolutions -- a later view's
    * list extends an earlier one's, never rewrites it -- because the
-   * verifier's anchor indexes (`headAnchorIndex`, the hook's
-   * `anchorIndex`) are positions in this list and are compared across views
-   * by the pre-write pass.
+   * verifier's controller version indexes (`headControllerVersionIndex`, the
+   * hook's `controllerVersionIndex`) are positions in this list and are
+   * compared across views by the pre-write pass.
    */
   versionIds: string[]
   /**
@@ -53,9 +54,9 @@ export interface ResourceLogController {
    * cannot know, consulted per PROOF (multi-proof entries are legal, so a
    * per-entry call would admit an unadmitted proof in a later array
    * position), after `assertionMethod` membership passes, after the entry's
-   * proofs verify, and before the anchor floor advances, for every entry past
-   * genesis. A throw refuses the append (or the served log) with the hook's
-   * own error class, propagated intact by the verifier. The hook is not
+   * proofs verify, and before the version floor advances, for every entry
+   * past genesis. A throw refuses the append (or the served log) with the
+   * hook's own error class, propagated intact by the verifier. The hook is not
    * called for any proof of an entry that fails verification; an
    * implementation must not depend on being called.
    *
@@ -80,19 +81,21 @@ export interface ResourceLogController {
    * @param input {object}
    * @param input.ordinal {number}   the entry's 1-based position in the log
    * @param input.keyMultibase {string}   the proof's signing-key multibase
-   * @param [input.anchor] {string}   the proof's entry anchor (absent on an
-   *   unversioned controller)
-   * @param input.anchorIndex {number | null}   the anchor as an index into
-   *   `versionIds` (`null` on an unversioned controller)
-   * @param input.headAnchorIndex {number}   the anchor floor before this
-   *   entry -- the verified predecessors' effective anchor
+   * @param [input.controllerVersionId] {string}   the proof's entry
+   *   controller versionId (absent on an unversioned controller)
+   * @param input.controllerVersionIndex {number | null}   the controller
+   *   versionId as an index into `versionIds` (`null` on an unversioned
+   *   controller)
+   * @param input.headControllerVersionIndex {number}   the version floor
+   *   before this entry -- the verified predecessors' effective controller
+   *   version
    * @returns {Promise<void>}
    */
   admitAppend?(input: {
     ordinal: number
     keyMultibase: string
-    anchor?: string
-    anchorIndex: number | null
-    headAnchorIndex: number
+    controllerVersionId?: string
+    controllerVersionIndex: number | null
+    headControllerVersionIndex: number
   }): Promise<void>
 }

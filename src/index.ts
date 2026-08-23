@@ -11,7 +11,7 @@
  * entries), the chain-head pin with its continuity rules, the append path
  * (verified-head build, the pre-write pass `verifyResourceLogAppend` over the
  * candidate, CAS with rebase-and-retry, read-back confirmation),
- * and the sealing sweep (the idempotent backstop append that re-anchors a
+ * and the sealing sweep (the idempotent backstop append that advances a
  * log's head past the controller's latest membership change).
  *
  * The wire types come from `@interop/storage-core`; the hashing and proof

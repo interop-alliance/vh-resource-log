@@ -39,37 +39,44 @@ VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ## Verifier and append correctness
 
-### VRL-4: Check every proof against the entry's own anchor
+### VRL-4: Check every proof against the entry's own controller version
 
 - status: todo
 - priority: high
-- labels: verify, anchoring, seal
+- labels: verify, controller-version, seal
 - verdict: confirmed
 - touches:
   - vh-resource-log `src/verify.ts`, ARCHITECTURE.md
   - encrypted-collections-spec (the spec states the per-entry rule but does not
-    say how divergent per-proof `versionId`s reduce to one entry anchor; decide
-    and write it down)
+    say how divergent per-proof `versionId`s reduce to one entry controller
+    version; decide and write it down in `#log-proof`, `#log-authorization`,
+    and `#log-verification` step 5)
   - wallet-core `src/resourceLog/license.ts` (the one-shot license is fed the
     same floor)
-- design: not yet drafted
+  - freewallet (direct `^0.3.0` pin on this library plus `link:` on wallet-core;
+    range bump in order)
+  - app-connect-spec `decisions/0003-ladder-authority-clauses.md` (the one-shot
+    clause gains the per-entry rule)
+- design: designs/VRL-4-entry-controller-version.md
 - design-approved:
 - acceptance:
   - [ ] Within one entry, each proof's membership is checked at the entry's
-        effective anchor (or the entry is refused when its proofs disagree),
-        rather than at the proof's own anchor against the previous entry's floor
-  - [ ] A multi-proof entry carrying a removed member's proof anchored below a
-        co-signer's anchor is refused
+        effective controller version (or the entry is refused when its proofs
+        disagree), rather than at the proof's own controller version against
+        the previous entry's floor
+  - [ ] A multi-proof entry carrying a removed member's proof at a controller
+        version below a co-signer's is refused
   - [ ] Two ladder-signed proofs at one inventory-changing version no longer
         both pass a one-shot `admitAppend` license
   - [ ] Multi-proof test cases added to `test/node/resourceLog-verify.test.ts`
 
-`src/verify.ts:476`. `anchorFloor` advances only after `verifyEntryProofs`
+`src/verify.ts:476`. `versionFloor` advances only after `verifyEntryProofs`
 returns, so every proof in an entry is checked against the previous entry's
-floor and at its own anchor. Alice removed at version 5, Bob anchored at 6 and
-Alice at 4 on the same entry: both pass, `headAnchorIndex` becomes 6, and
-`sealResourceLog` reports the log sealed with a removed member's signature on
-its head. The spec's rule (spec.md:1345-1347) is written per entry.
+floor and at its own controller version. Alice removed at version 5, Bob
+carrying controller version 6 and Alice carrying version 4 on the same entry:
+both pass, `headControllerVersionIndex` becomes 6, and `sealResourceLog`
+reports the log sealed with a removed member's signature on its head. The
+spec's rule (spec.md:1345-1347) is written per entry.
 
 ### VRL-5: Escape the segments of `resourceLogPinId`
 
@@ -167,12 +174,13 @@ the `method` check catches it.
   - [ ] The two "nothing to seal against" returns agree on `verified`
   - [ ] Tests land in this repo (see VRL-10)
 
-`src/seal.ts:167`. With a stale hint whose `headAnchorIndex < removalIndex`,
-`appendResourceLog`'s fresh read finds the log already sealed, `buildState`
-returns `null`, nothing is written, and the call still returns
-`{ sealed: true }`; the same state read without a hint returns `sealed: false`
-at line 149. Lines 124-125 also return `verified: null` when a hint was
-supplied, unlike line 129. wallet-core surfaces the flag as a ceremony outcome.
+`src/seal.ts:167`. With a stale hint whose
+`headControllerVersionIndex < removalIndex`, `appendResourceLog`'s fresh read
+finds the log already sealed, `buildState` returns `null`, nothing is written,
+and the call still returns `{ sealed: true }`; the same state read without a
+hint returns `sealed: false` at line 149. Lines 124-125 also return
+`verified: null` when a hint was supplied, unlike line 129. wallet-core
+surfaces the flag as a ceremony outcome.
 
 ### VRL-10: Move the sealing-sweep test suite into this repo
 
@@ -247,7 +255,7 @@ ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
 
 ## Error contracts and classification
 
-### VRL-13: Distinguish "anchor unknown to this reader" from fabrication
+### VRL-13: Distinguish "controller versionId unknown to this reader" from fabrication
 
 - status: draft
 - priority: medium
@@ -259,8 +267,8 @@ ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
   - encrypted-collections-spec (spec.md:1366-1368 ratifies the rejection;
     classification is unspecified)
 
-`src/verify.ts:468-474`. Rejecting an anchor past the reader's controller head
-is the documented design, but the refusal is a reason-less
+`src/verify.ts:468-474`. Rejecting a controller versionId past the reader's
+controller head is the documented design, but the refusal is a reason-less
 `ResourceLogIntegrityError`, indistinguishable from tampering, so wallet-core
 hard-refuses where a controller refresh and retry would recover. Draft because
 the fix is a new error name or `reason` value, which is a wire-level decision
@@ -355,8 +363,8 @@ the rollback carve-out twice.
 - labels: cleanup, seal
 - verdict: confirmed
 - acceptance:
-  - [ ] `headAnchorIndex !== null && headAnchorIndex >= removalIndex` appears
-        once (lines 145-148 and 160-163 today)
+  - [ ] `headControllerVersionIndex !== null && headControllerVersionIndex >= removalIndex`
+        appears once (lines 145-148 and 160-163 today)
 
 Pairs naturally with VRL-9.
 
