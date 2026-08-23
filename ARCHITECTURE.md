@@ -61,9 +61,13 @@ was-client and wallet-core depend on this library; nothing here depends on them.
    refusals retain the served entries as transferable evidence of equivocation.
 4. **Pin slot keys are derived by the library** (`resourceLogPinId`), not chosen
    by a store implementation, and are host-free
-   (`space/<spaceId>/<collection>/<resource>`): a log served from a claimed new
-   host lands in the SAME slot and is checked against the pin already held,
-   rather than opening a fresh trust-on-first-use slate.
+   (`space/<spaceId>/<collectionId>/<resourceId>`): a log served from a claimed
+   new host lands in the SAME slot and is checked against the pin already
+   held, rather than opening a fresh trust-on-first-use slate. WAS requires
+   Space, Collection, and Resource ids to be URL-safe, so a `/` cannot appear
+   inside a valid id and the plain slash-joined key stays unambiguous.
+   `resourceLogPinId` throws a plain `TypeError` if any segment is empty or
+   contains a `/`, rather than building a key that could collide.
 5. **The controller view is resolved independently of the host serving the
    log.** The `ResourceLogController` port carries no resolution -- it is a view
    the caller builds from an already verified document -- which is what enforces

@@ -58,11 +58,17 @@ export interface ResourceLogPinStore {
  * is checked against the pin already held, rather than opening a fresh
  * trust-on-first-use slate (the mirror-fork concern).
  *
+ * The key relies on the WAS rule that Space, Collection, and Resource ids are
+ * URL-safe, so `/` never appears inside a segment and the three-part key is
+ * unambiguous. The function refuses an empty or slash-bearing segment with a
+ * `TypeError` rather than silently producing an ambiguous key.
+ *
  * @param options {object}
  * @param options.spaceId {string}   the Space the log lives in
  * @param options.collectionId {string}   the collection holding the log
  * @param options.resourceId {string}   the log resource's id
  * @returns {string}
+ * @throws {TypeError}
  */
 export function resourceLogPinId({
   spaceId,
@@ -73,7 +79,27 @@ export function resourceLogPinId({
   collectionId: string
   resourceId: string
 }): string {
+  assertUrlSafeSegment('spaceId', spaceId)
+  assertUrlSafeSegment('collectionId', collectionId)
+  assertUrlSafeSegment('resourceId', resourceId)
   return `space/${spaceId}/${collectionId}/${resourceId}`
+}
+
+/**
+ * Guards one `resourceLogPinId` segment: it must be non-empty and must not
+ * contain `/`, per the WAS rule that Space, Collection, and Resource ids are
+ * URL-safe.
+ *
+ * @param name {string}
+ * @param value {string}
+ * @throws {TypeError}
+ */
+function assertUrlSafeSegment(name: string, value: string): void {
+  if (value.length === 0 || value.includes('/')) {
+    throw new TypeError(
+      `resourceLogPinId: ${name} must be a non-empty id without "/" (WAS ids are URL-safe); got ${JSON.stringify(value)}`
+    )
+  }
 }
 
 /**

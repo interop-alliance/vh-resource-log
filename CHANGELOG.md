@@ -1,5 +1,13 @@
 # @interop/vh-resource-log Changelog
 
+## 0.4.1 - TBD
+
+### Changed
+
+- `resourceLogPinId` now throws a `TypeError` for an empty or slash-bearing
+  `spaceId`, `collectionId`, or `resourceId`, instead of silently building an
+  ambiguous slot key. Valid (URL-safe) ids produce the same pin id as before.
+
 ## 0.4.0 - 2026-08-22
 
 ### Changed

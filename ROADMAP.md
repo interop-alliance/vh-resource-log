@@ -23,8 +23,8 @@ Conventions".
 
 ## Source of the current items
 
-VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22
-(VRL-1, VRL-2, and VRL-3 have shipped and live in
+VRL-1 through VRL-26 come from a whole-tree code review run on 2026-08-22 (VRL-1
+through VRL-5 have shipped and live in
 [archived-roadmap.md](archived-roadmap.md); eight finder angles, each candidate
 independently verified against the code, the encrypted-collections spec, and the
 wallet-core / was-client call sites). The verdict recorded on each item is the
@@ -38,77 +38,6 @@ error class, `reason` value, or other error-name contract (VRL-6, VRL-13,
 VRL-16) need the wire-level convention decided by the maintainer before coding.
 
 ## Verifier and append correctness
-
-### VRL-4: Check every proof against the entry's own controller version
-
-- status: todo
-- priority: high
-- labels: verify, controller-version, seal
-- verdict: confirmed
-- touches:
-  - vh-resource-log `src/verify.ts`, ARCHITECTURE.md,
-    decisions/0002-one-controller-version-per-entry.md
-  - encrypted-collections-spec (the spec states the per-entry rule but does not
-    say how divergent per-proof `versionId`s reduce to one entry controller
-    version; decide and write it down in `#log-proof`, `#log-authorization`,
-    `#log-verification` step 5, and `#log-append`)
-  - wallet-core `src/resourceLog/license.ts` (the one-shot license is fed the
-    same head controller version)
-  - freewallet (direct `^0.3.0` pin on this library plus `link:` on wallet-core;
-    range bump in order)
-  - app-connect-spec `decisions/0003-ladder-authority-clauses.md` (the one-shot
-    clause gains the per-entry rule)
-- design: designs/VRL-4-entry-controller-version.md
-- design-approved: 2026-08-22
-- acceptance:
-  - [x] `src/verify.ts` pre-pass implemented per design section 5; every row of
-        the section 4 interaction matrix has a test or is exempted with the
-        exemption recorded
-  - [ ] the consumer list in design section 3 is handled in full (this repo's
-        three raw-input `toEqual` assertions, wallet-core's license, controller,
-        fixture hook, and ten license-test literals, the "exactly two shapes"
-        texts, app-connect-spec decision 0003, the range bumps in publish order)
-        (this repo's three raw-input assertions done; wallet-core,
-        app-connect-spec, and the range bumps remain)
-  - [ ] the section 7 test plan is green in this repo and wallet-core (green in
-        this repo; wallet-core's portion remains)
-  - [ ] the doc edits in section 5 are made (ARCHITECTURE.md invariants 6 and 12
-        and the glossary, CHANGELOG 0.4.0 breaking, the LEARNINGS.md lesson, and
-        the spec passages in section 8 decision 3 edited by the maintainer)
-        (ARCHITECTURE.md, CHANGELOG.md, and LEARNINGS.md done in this repo; the
-        spec passages remain for the maintainer)
-
-`src/verify.ts:476`. `headVersionIndex` advances only after `verifyEntryProofs`
-returns, so every proof in an entry is checked against the previous entry's head
-controller version and at its own controller version. Alice removed at version
-5, Bob carrying controller version 6 and Alice carrying version 4 on the same
-entry: both pass, `headControllerVersionIndex` becomes 6, and `sealResourceLog`
-reports the log sealed with a removed member's signature on its head. The spec's
-rule (spec.md:1345-1347) is written per entry.
-
-### VRL-5: Escape the segments of `resourceLogPinId`
-
-- status: todo
-- priority: high
-- labels: pin, ids
-- verdict: confirmed
-- touches:
-  - vh-resource-log `src/pin.ts`, ARCHITECTURE.md (invariant 4)
-  - wallet-core, was-client (any persisted pin ids change shape; greenfield, no
-    migration)
-- acceptance:
-  - [ ] Two distinct `{ spaceId, collectionId, resourceId }` triples can never
-        produce the same pin id (encode each segment, or length-prefix)
-  - [ ] Test with slash-bearing collection and resource ids
-  - [ ] The chosen encoding is recorded in ARCHITECTURE.md
-
-`src/pin.ts:76` (derivation at `pin.ts:319`). A bare template concatenation with
-`/`, so `{ collectionId: 'a/b', resourceId: 'c' }` and
-`{ collectionId: 'a', resourceId: 'b/c' }` both map to `space/s/a/b/c`. The port
-promises two different logs never share a `logId`; WAS leaves id format to the
-implementer and was-client percent-encodes slots individually, so `a%2Fb` is a
-legal collection. The encoding choice is a wire-level decision for the
-maintainer.
 
 ### VRL-6: Do not classify a throwing `assertionKeysAt` as fabrication
 

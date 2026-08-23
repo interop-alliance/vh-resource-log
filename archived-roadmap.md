@@ -158,3 +158,79 @@ CAS attempts instead.
 no null guard; `append.ts:153` gates only on `state === null`, so a JS
 `buildState` returning `undefined` reaches it. `checkEntryShape` already has the
 guarded form of the same rule.
+
+### VRL-4: Check every proof against the entry's own controller version
+
+- status: done (2026-08-22)
+- priority: high
+- labels: verify, controller-version, seal
+- verdict: confirmed
+- touches:
+  - shipped 2026-08-22: vh-resource-log `src/verify.ts` (entry-level pre-pass),
+    `src/controller.ts` (`proofKeys` hook input), ARCHITECTURE.md (invariants 6
+    and 12, glossary), decisions/0002-one-controller-version-per-entry.md,
+    CHANGELOG.md (0.4.0, breaking)
+  - encrypted-collections-spec: `#log-proof`, `#log-authorization`,
+    `#log-verification` step 5, and `#log-append` carry the reduction rule
+    (shipped 2026-08-22)
+  - wallet-core: range bump to `^0.4.0` and the `proofKeys` test literals
+    shipped in 0.52.1 (2026-08-22); the per-entry ladder rule in
+    `src/resourceLog/license.ts`, the controller and fixture hook forwarding,
+    and the co-signed license tests landed in the checkout 2026-08-22 for 0.53.0
+  - freewallet: range bump to `^0.4.0` in the checkout (2026-08-22); was-client
+    already allowed `^0.4.0`; dcw bumps when it next bumps wallet-core
+  - app-connect-spec `decisions/0003-ladder-authority-clauses.md`: shape 2 gains
+    the per-entry refinement (in the checkout, 2026-08-22)
+- design: designs/VRL-4-entry-controller-version.md
+- design-approved: 2026-08-22
+- acceptance:
+  - [x] `src/verify.ts` pre-pass implemented per design section 5; every row of
+        the section 4 interaction matrix has a test or is exempted with the
+        exemption recorded
+  - [x] the consumer list in design section 3 is handled in full (this repo's
+        three raw-input `toEqual` assertions, wallet-core's license, controller,
+        fixture hook, and ten license-test literals, the "exactly two shapes"
+        texts, app-connect-spec decision 0003, the range bumps in publish order)
+  - [x] the section 7 test plan is green in this repo and wallet-core
+  - [x] the doc edits in section 5 are made (ARCHITECTURE.md invariants 6 and 12
+        and the glossary, CHANGELOG 0.4.0 breaking, the LEARNINGS.md lesson, and
+        the spec passages in section 8 decision 3 edited by the maintainer)
+
+`src/verify.ts:476`. `headVersionIndex` advances only after `verifyEntryProofs`
+returns, so every proof in an entry is checked against the previous entry's head
+controller version and at its own controller version. Alice removed at version
+5, Bob carrying controller version 6 and Alice carrying version 4 on the same
+entry: both pass, `headControllerVersionIndex` becomes 6, and `sealResourceLog`
+reports the log sealed with a removed member's signature on its head. The spec's
+rule (spec.md:1345-1347) is written per entry.
+
+### VRL-5: Escape the segments of `resourceLogPinId`
+
+- status: done (2026-08-22)
+- priority: high
+- labels: pin, ids
+- verdict: confirmed
+- touches:
+  - vh-resource-log `src/pin.ts`, ARCHITECTURE.md (invariant 4)
+  - wallet-core, was-client (any persisted pin ids change shape; greenfield, no
+    migration) (not needed: shape unchanged)
+- decision: reconsidered the percent-encoding approach. WAS requires Space,
+  Collection, and Resource ids to be URL-safe, so a `/` cannot appear inside a
+  valid id and the collision this item worried about cannot arise from valid
+  ids. Encoding also needlessly changed pin ids for `urn:uuid:` spaceIds.
+  Resolved instead with a guard: `resourceLogPinId` throws a `TypeError` on an
+  empty or slash-bearing segment. The pin id shape (`space/<spaceId>/
+  <collectionId>/<resourceId>`) is unchanged.
+- acceptance:
+  - [x] Two distinct `{ spaceId, collectionId, resourceId }` triples can never
+        produce the same pin id (by refusing slash-bearing segments)
+  - [x] Test with slash-bearing collection and resource ids
+  - [x] The guard is recorded in ARCHITECTURE.md
+
+`src/pin.ts:76` (derivation at `pin.ts:319`). A bare template concatenation with
+`/`, so `{ collectionId: 'a/b', resourceId: 'c' }` and
+`{ collectionId: 'a', resourceId: 'b/c' }` both map to `space/s/a/b/c`. The port
+promises two different logs never share a `logId`; WAS leaves id format to the
+implementer and was-client percent-encodes slots individually, so `a%2Fb` is a
+legal collection. The encoding choice is a wire-level decision for the
+maintainer.
