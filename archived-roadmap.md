@@ -343,3 +343,30 @@ Shipped 2026-08-23: added `test/node/entry.test.ts` -- an `it.each` table
 pinning `versionIdOrdinal` for the five inputs, `history`-state refusals for
 both entry builders, and the no-ordinal head refusal in
 `buildResourceLogEntry`.
+
+### VRL-29: Cover `createResourceLog`'s error-propagation branches
+
+- status: done (2026-08-23)
+- priority: low
+- labels: tests, append
+- verdict: confirmed
+- acceptance:
+  - [x] A non-conflict throw from `store.create` propagates instead of being
+        adopted as a lost race (`src/append.ts:363`)
+  - [x] The "lost the guarded-create race, but the re-read served nothing"
+        refusal is exercised (`src/append.ts:372`)
+  - [x] The non-Integrity rethrow from the genesis pre-write pass executes under
+        coverage (`src/append.ts:351`; the existing "propagates a non-Integrity
+        throw" test leaves it unexecuted -- establish which path that test
+        actually takes and cover this one too)
+
+These are the branches that keep "create my genesis" from degrading into "adopt
+whatever the host serves" on an unexpected port failure; all three are cheap to
+drive through `memoryLogStore` wrappers.
+
+Shipped 2026-08-23: three tests added to
+`test/node/resourceLog-append.test.ts`; coverage confirms append.ts lines 351,
+363, and 372 each execute. The pre-existing "non-Integrity throw" test was
+found to exercise the genesis build path (the broken controller threw before
+the pre-write verify ran) and was renamed accordingly.
+

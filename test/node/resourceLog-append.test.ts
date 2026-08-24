@@ -27,6 +27,7 @@ import {
   readResourceLog,
   resourceLogPinId,
   ResourceLogClosedError,
+  ResourceLogConflictError,
   ResourceLogIntegrityError,
   sealResourceLog,
   verifyResourceLog,
@@ -271,6 +272,58 @@ describe('createResourceLog', () => {
     expect(verified.scid).toBe(winner.verified.scid)
     expect(verified.state).toEqual({ type: 'TestState', value: 42 })
     expect(await pinStore.read({ logId: LOG_ID })).toEqual(verified.pin)
+  })
+
+  it('propagates a non-conflict throw from the guarded create', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    // A transport bug is not a lost race: it propagates as itself, and
+    // nothing is read back or adopted.
+    const bug = new TypeError('store transport bug')
+    const failing: ResourceLogStore = {
+      read: () => store.read(),
+      append: (entry, options) => store.append(entry, options),
+      async create() {
+        throw bug
+      }
+    }
+    await expect(
+      createResourceLog({
+        store: failing,
+        controller,
+        method: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: alice.logSigner,
+        state: { type: 'TestState', value: 1 }
+      })
+    ).rejects.toBe(bug)
+    expect(store._getEntries()).toBeNull()
+    expect(await pinStore.read({ logId: LOG_ID })).toBeNull()
+  })
+
+  it('refuses a lost guarded-create race whose re-read serves nothing', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    // The host reports "already exists" yet serves no log on re-read: there
+    // is nothing to adopt, and the create is not treated as landed.
+    const lying: ResourceLogStore = {
+      read: () => store.read(),
+      append: (entry, options) => store.append(entry, options),
+      async create() {
+        throw new ResourceLogConflictError('log already exists')
+      }
+    }
+    await expect(
+      createResourceLog({
+        store: lying,
+        controller,
+        method: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer: alice.logSigner,
+        state: { type: 'TestState', value: 1 }
+      })
+    ).rejects.toThrow(/no log was served on re-read/)
+    expect(await pinStore.read({ logId: LOG_ID })).toBeNull()
   })
 })
 
@@ -969,7 +1022,7 @@ describe('createResourceLog pre-write pass', () => {
     expect(calls).toBe(0)
   })
 
-  it('propagates a non-Integrity throw from the pass without adopting anything', async () => {
+  it('propagates a non-Integrity throw from the genesis build without adopting anything', async () => {
     const alice = await makeLogClient()
     const bob = await makeLogClient()
     const controller = fakeController({
@@ -986,7 +1039,10 @@ describe('createResourceLog pre-write pass', () => {
       state: { type: 'TestState', value: 42 }
     })
     // A port bug: the view throws from outside the kernel's authorize
-    // callback (inside it, a throw is wrapped as the Integrity class).
+    // callback (inside it, a throw is wrapped as the Integrity class). This
+    // getter throws on its very first read, which `buildResourceLogGenesis`
+    // performs while building the versioned verification method -- so the
+    // throw propagates from the build, before the pre-write verify runs.
     const bug = new TypeError('controller port bug')
     const broken: ResourceLogController = {
       did: controller.did,
@@ -1009,6 +1065,52 @@ describe('createResourceLog pre-write pass', () => {
       })
     ).rejects.toBe(bug)
     expect(events).toEqual([])
+    expect(await pinStore.read({ logId: LOG_ID })).toBeNull()
+  })
+
+  it('propagates a non-Integrity throw from the pre-write verify itself', async () => {
+    const alice = await makeLogClient()
+    const controller = fakeController({
+      versions: [{ versionId: '1-v1', keys: [alice.signingKeyMultibase] }]
+    })
+    // The build's controller reads all happen before the signer runs, so a
+    // getter that misbehaves only once signing has happened lets the genesis
+    // build cleanly and throws from the pre-write `verifyResourceLog` -- the
+    // catch's non-Integrity rethrow, with no read and no adoption.
+    const bug = new TypeError('controller port bug')
+    let signed = false
+    const signer = {
+      keyMultibase: alice.logSigner.keyMultibase,
+      async sign({ data }: { data: Uint8Array }): Promise<Uint8Array> {
+        const signature = await alice.logSigner.sign({ data })
+        signed = true
+        return signature
+      }
+    }
+    const flaky: ResourceLogController = {
+      did: controller.did,
+      get versionIds(): string[] {
+        if (signed) {
+          throw bug
+        }
+        return ['1-v1']
+      },
+      assertionKeysAt: controller.assertionKeysAt
+    }
+    const store = memoryLogStore()
+    const pinStore = memoryResourceLogPinStore()
+    await expect(
+      createResourceLog({
+        store,
+        controller: flaky,
+        method: METHOD,
+        pinStore,
+        logId: LOG_ID,
+        signer,
+        state: { type: 'TestState', value: 1 }
+      })
+    ).rejects.toBe(bug)
+    expect(store._getEntries()).toBeNull()
     expect(await pinStore.read({ logId: LOG_ID })).toBeNull()
   })
 })

@@ -242,26 +242,6 @@ the rollback carve-out twice.
 
 ## Test coverage
 
-### VRL-29: Cover `createResourceLog`'s error-propagation branches
-
-- status: todo
-- priority: low
-- labels: tests, append
-- verdict: confirmed
-- acceptance:
-  - [ ] A non-conflict throw from `store.create` propagates instead of being
-        adopted as a lost race (`src/append.ts:363`)
-  - [ ] The "lost the guarded-create race, but the re-read served nothing"
-        refusal is exercised (`src/append.ts:372`)
-  - [ ] The non-Integrity rethrow from the genesis pre-write pass executes under
-        coverage (`src/append.ts:351`; the existing "propagates a non-Integrity
-        throw" test leaves it unexecuted -- establish which path that test
-        actually takes and cover this one too)
-
-These are the branches that keep "create my genesis" from degrading into "adopt
-whatever the host serves" on an unexpected port failure; all three are cheap to
-drive through `memoryLogStore` wrappers.
-
 ### VRL-30: Contract tests for the `./testing` fakes
 
 - status: todo
