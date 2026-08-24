@@ -242,25 +242,6 @@ the rollback carve-out twice.
 
 ## Test coverage
 
-### VRL-28: Unit-test the `entry.ts` guards and `versionIdOrdinal`
-
-- status: todo
-- priority: low
-- labels: tests, entry
-- verdict: confirmed
-- acceptance:
-  - [ ] A table test pins `versionIdOrdinal` (`"3-hash"`, `"0-x"`, `"-1-x"`,
-        `"abc"`, `""`)
-  - [ ] The entry builders refuse a state carrying the `history` member
-        (`src/entry.ts:123`; the reader side is tested, the builder side is not)
-  - [ ] `buildResourceLogEntry` refuses a head whose `versionId` carries no
-        ordinal (`src/entry.ts:272`)
-
-`versionIdOrdinal` is the one ordinal reader shared by the entry builder,
-`confirmAppend`, and the pin-continuity check, and VRL-22 plans to change how
-the ordinal is derived; a behavior-pinning table test should precede that
-change.
-
 ### VRL-29: Cover `createResourceLog`'s error-propagation branches
 
 - status: todo

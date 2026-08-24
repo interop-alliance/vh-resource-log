@@ -319,3 +319,27 @@ the fork guard -- land this test first or together with VRL-20.
 Shipped 2026-08-23: four tests added to
 `test/node/resourceLog-verify.test.ts`; coverage confirms the four branches
 executed (verify.ts uncovered lines reduced to 203 and 268).
+
+### VRL-28: Unit-test the `entry.ts` guards and `versionIdOrdinal`
+
+- status: done (2026-08-23)
+- priority: low
+- labels: tests, entry
+- verdict: confirmed
+- acceptance:
+  - [x] A table test pins `versionIdOrdinal` (`"3-hash"`, `"0-x"`, `"-1-x"`,
+        `"abc"`, `""`)
+  - [x] The entry builders refuse a state carrying the `history` member
+        (`src/entry.ts:123`; the reader side is tested, the builder side is not)
+  - [x] `buildResourceLogEntry` refuses a head whose `versionId` carries no
+        ordinal (`src/entry.ts:272`)
+
+`versionIdOrdinal` is the one ordinal reader shared by the entry builder,
+`confirmAppend`, and the pin-continuity check, and VRL-22 plans to change how
+the ordinal is derived; a behavior-pinning table test should precede that
+change.
+
+Shipped 2026-08-23: added `test/node/entry.test.ts` -- an `it.each` table
+pinning `versionIdOrdinal` for the five inputs, `history`-state refusals for
+both entry builders, and the no-ordinal head refusal in
+`buildResourceLogEntry`.

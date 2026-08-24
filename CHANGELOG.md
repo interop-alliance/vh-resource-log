@@ -14,6 +14,11 @@
   head carrying no ordinal (refused as a fork with the served entries
   retained).
 
+- New `entry.ts` unit tests pin `versionIdOrdinal`'s parsing table and the
+  builder-side guards: both entry builders refuse a state carrying the
+  reserved `history` member, and `buildResourceLogEntry` refuses a head whose
+  `versionId` carries no ordinal.
+
 ## 0.4.1 - 2026-08-22
 
 ### Fixed
