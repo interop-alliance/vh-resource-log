@@ -48,9 +48,9 @@ Do not add test files to `tsconfig.json` — they would be emitted into `dist/`.
 ### Tests
 
 - `test/node/` — Vitest unit tests (`pnpm run test:node`); run in Node. The
-  adversarial suites (verify, append, admission hook) run against the published
-  fixtures from `src/testing.ts` plus the signer fixture in
-  `test/node/fixtures/log.ts`.
+  adversarial suites (verify, append, admission hook, sealing sweep) run
+  against the published fixtures from `src/testing.ts` plus the signer fixture
+  in `test/node/fixtures/log.ts`.
 - `test/browser/` — Playwright smoke test (`pnpm run test:browser`); verifies a
   fixture log in real Chromium via a Vite dev server (`pnpm run dev`), covering
   the kernel and `@noble/curves` under the browser build.

@@ -268,3 +268,28 @@ Landed 2026-08-22: vh-resource-log 0.4.1 (`readResourceLog` consults the pin
 on an absent log; `createResourceLog` consults it before building or writing)
 and wallet-core 0.53.0 (the governed store's `create` consults the pin; read
 paths surface the refusal through the library).
+
+### VRL-10: Move the sealing-sweep test suite into this repo
+
+- status: done (2026-08-23)
+- priority: medium
+- labels: tests, docs
+- verdict: confirmed
+- touches:
+  - vh-resource-log `test/node/`, ARCHITECTURE.md (line 133 claim), AGENTS.md
+    (Tests section)
+  - wallet-core `test/node/resourceLog-seal.test.ts` (moves out, or stays as a
+    consumer-side integration test with its header fixed)
+- acceptance:
+  - [x] `sealResourceLog` and `latestAssertionRemovalIndex` are exercised by
+        `pnpm test` here
+  - [x] ARCHITECTURE.md's "moved in with their tests" statement is true
+
+`ARCHITECTURE.md:133`. `grep -rl sealResourceLog test/` returns nothing; the
+suite lives in wallet-core and still imports from `@interop/vh-resource-log`. A
+seal regression is invisible to the breaking- release audit AGENTS.md runs from
+this repo.
+
+Landed 2026-08-23: vh-resource-log 0.4.2 (the sealing-sweep suite moved into
+`test/node/resourceLog-seal.test.ts`, exercising `sealResourceLog` and
+`latestAssertionRemovalIndex`); the wallet-core copy was deleted.

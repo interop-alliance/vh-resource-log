@@ -37,6 +37,15 @@ documents as invariants, so they carry the design gate. Items that add a new
 error class, `reason` value, or other error-name contract (VRL-6, VRL-13,
 VRL-16) need the wire-level convention decided by the maintainer before coding.
 
+VRL-27 through VRL-30 come from a test-coverage scan run on 2026-08-23
+(`pnpm test:coverage`, v8 provider, 132 tests passing at v0.4.1): each item
+names branches the run showed unexecuted, verified by hand against the sources.
+The same run confirmed `src/seal.ts` as the least-covered module (85.7% lines,
+58.3% branches); that gap is VRL-10's, not a new item's -- wallet-core's
+`resourceLog-seal.test.ts` already holds the missing cases (idempotence,
+removal-index semantics, the early exits, stale-view convergence, closed-log
+propagation) and moving it in closes them.
+
 ## Verifier and append correctness
 
 ### VRL-6: Do not classify a throwing `assertionKeysAt` as fabrication
@@ -118,27 +127,6 @@ and the call still returns `{ sealed: true }`; the same state read without a
 hint returns `sealed: false` at line 149. Lines 124-125 also return
 `verified: null` when a hint was supplied, unlike line 129. wallet-core surfaces
 the flag as a ceremony outcome.
-
-### VRL-10: Move the sealing-sweep test suite into this repo
-
-- status: todo
-- priority: medium
-- labels: tests, docs
-- verdict: confirmed
-- touches:
-  - vh-resource-log `test/node/`, ARCHITECTURE.md (line 133 claim), AGENTS.md
-    (Tests section)
-  - wallet-core `test/node/resourceLog-seal.test.ts` (moves out, or stays as a
-    consumer-side integration test with its header fixed)
-- acceptance:
-  - [ ] `sealResourceLog` and `latestAssertionRemovalIndex` are exercised by
-        `pnpm test` here
-  - [ ] ARCHITECTURE.md's "moved in with their tests" statement is true
-
-`ARCHITECTURE.md:133`. `grep -rl sealResourceLog test/` returns nothing; the
-suite lives in wallet-core and still imports from `@interop/vh-resource-log`. A
-seal regression is invisible to the breaking- release audit AGENTS.md runs from
-this repo.
 
 ### VRL-11: Make `memoryLogStore` faithful to the store port
 
@@ -251,6 +239,88 @@ contract is wire-like here).
 `src/errors.ts:163`. Only `isResourceLogConflictError` exists. Every consumer
 re-implements the same `(err as { name?: unknown })?.name` comparison, including
 the rollback carve-out twice.
+
+## Test coverage
+
+### VRL-27: Cover the uncovered refusal branches in `verify.ts`
+
+- status: todo
+- priority: medium
+- labels: tests, verify
+- verdict: confirmed
+- acceptance:
+  - [ ] A proof outside the fixed shape (wrong `type`, `cryptosuite`, or
+        `proofPurpose`) is refused as the integrity class (`src/verify.ts:128`)
+  - [ ] A `parameters` member that is not an object (`null`, a string) is
+        refused (`src/verify.ts:178`; the array case is VRL-8's)
+  - [ ] A proof `verificationMethod` that does not parse as a versioned
+        verification-method DID URL is refused (`src/verify.ts:314`)
+  - [ ] A pin whose `head` carries no ordinal yields the `fork` verdict with the
+        served entries retained (`src/verify.ts:743`)
+  - [ ] `pnpm test:coverage` shows the four branches executed
+
+Each case is a one-line mutation of an existing fixture. The corrupted-pin case
+matters because pins are consumer-persisted (a hostile or corrupted pin store is
+a seam consumers implement), and it pins the verdict VRL-20 plans to fold into
+the fork guard -- land this test first or together with VRL-20.
+
+### VRL-28: Unit-test the `entry.ts` guards and `versionIdOrdinal`
+
+- status: todo
+- priority: low
+- labels: tests, entry
+- verdict: confirmed
+- acceptance:
+  - [ ] A table test pins `versionIdOrdinal` (`"3-hash"`, `"0-x"`, `"-1-x"`,
+        `"abc"`, `""`)
+  - [ ] The entry builders refuse a state carrying the `history` member
+        (`src/entry.ts:123`; the reader side is tested, the builder side is not)
+  - [ ] `buildResourceLogEntry` refuses a head whose `versionId` carries no
+        ordinal (`src/entry.ts:272`)
+
+`versionIdOrdinal` is the one ordinal reader shared by the entry builder,
+`confirmAppend`, and the pin-continuity check, and VRL-22 plans to change how
+the ordinal is derived; a behavior-pinning table test should precede that
+change.
+
+### VRL-29: Cover `createResourceLog`'s error-propagation branches
+
+- status: todo
+- priority: low
+- labels: tests, append
+- verdict: confirmed
+- acceptance:
+  - [ ] A non-conflict throw from `store.create` propagates instead of being
+        adopted as a lost race (`src/append.ts:363`)
+  - [ ] The "lost the guarded-create race, but the re-read served nothing"
+        refusal is exercised (`src/append.ts:372`)
+  - [ ] The non-Integrity rethrow from the genesis pre-write pass executes under
+        coverage (`src/append.ts:351`; the existing "propagates a non-Integrity
+        throw" test leaves it unexecuted -- establish which path that test
+        actually takes and cover this one too)
+
+These are the branches that keep "create my genesis" from degrading into "adopt
+whatever the host serves" on an unexpected port failure; all three are cheap to
+drive through `memoryLogStore` wrappers.
+
+### VRL-30: Contract tests for the `./testing` fakes
+
+- status: todo
+- priority: low
+- labels: tests, fixtures
+- verdict: confirmed
+- acceptance:
+  - [ ] `memoryLogStore` is tested directly against the store port's contract: a
+        stale-etag append and a create over an existing log throw the named
+        conflict error, and `_withholdEtag` yields an etag-less read
+  - [ ] `fakeController.assertionKeysAt` throws on an unknown versionId
+        (`src/testing.ts:61`) and resolves `currentKeys` on the unversioned path
+  - [ ] The suite is re-run after VRL-11 lands, pinning its new behavior
+
+AGENTS.md names the fakes as the ports' reference implementations for consumers,
+but today they are exercised only incidentally through the append and verify
+suites. Pairs with VRL-11 (its fidelity changes should land with these tests);
+merging this item into VRL-11 at implementation time is fine.
 
 ## Cleanup
 

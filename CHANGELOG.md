@@ -1,5 +1,13 @@
 # @interop/vh-resource-log Changelog
 
+## 0.4.2 - TBD
+
+### Changed
+
+- The sealing-sweep test suite (`sealResourceLog`, `latestAssertionRemovalIndex`)
+  moved into this repo's own test run, so a seal regression is caught here
+  instead of only in a consumer's tests.
+
 ## 0.4.1 - 2026-08-22
 
 ### Fixed
