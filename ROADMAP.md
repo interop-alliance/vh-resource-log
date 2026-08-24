@@ -242,28 +242,6 @@ the rollback carve-out twice.
 
 ## Test coverage
 
-### VRL-27: Cover the uncovered refusal branches in `verify.ts`
-
-- status: todo
-- priority: medium
-- labels: tests, verify
-- verdict: confirmed
-- acceptance:
-  - [ ] A proof outside the fixed shape (wrong `type`, `cryptosuite`, or
-        `proofPurpose`) is refused as the integrity class (`src/verify.ts:128`)
-  - [ ] A `parameters` member that is not an object (`null`, a string) is
-        refused (`src/verify.ts:178`; the array case is VRL-8's)
-  - [ ] A proof `verificationMethod` that does not parse as a versioned
-        verification-method DID URL is refused (`src/verify.ts:314`)
-  - [ ] A pin whose `head` carries no ordinal yields the `fork` verdict with the
-        served entries retained (`src/verify.ts:743`)
-  - [ ] `pnpm test:coverage` shows the four branches executed
-
-Each case is a one-line mutation of an existing fixture. The corrupted-pin case
-matters because pins are consumer-persisted (a hostile or corrupted pin store is
-a seam consumers implement), and it pins the verdict VRL-20 plans to fold into
-the fork guard -- land this test first or together with VRL-20.
-
 ### VRL-28: Unit-test the `entry.ts` guards and `versionIdOrdinal`
 
 - status: todo

@@ -440,6 +440,60 @@ describe('verifyResourceLog (parse-shape refusals)', () => {
       })
     ).rejects.toThrow(/no proof array/)
   })
+
+  it("refuses a proof outside the profile's fixed shape", async () => {
+    const { controller, entries } = await makeBaselineLog()
+    const tampered = structuredClone(entries)
+    // The shape check runs before signature verification, so this refuses
+    // on the shape message rather than a later hash or signature failure.
+    tampered[1]!.proof[0]!.proofPurpose = 'authentication' as never
+    await expect(
+      verifyResourceLog({
+        entries: tampered,
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/fixed shape/)
+  })
+
+  it('refuses a non-object parameters member', async () => {
+    const { controller, entries } = await makeBaselineLog()
+    const nullParameters = structuredClone(entries)
+    nullParameters[1]!.parameters = null as never
+    await expect(
+      verifyResourceLog({
+        entries: nullParameters,
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/non-object parameters member/)
+
+    const stringParameters = structuredClone(entries)
+    stringParameters[1]!.parameters = 'not-an-object' as never
+    await expect(
+      verifyResourceLog({
+        entries: stringParameters,
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/non-object parameters member/)
+  })
+
+  it('refuses a proof verificationMethod that is not a versioned DID URL', async () => {
+    const { controller, entries } = await makeBaselineLog()
+    const tampered = structuredClone(entries)
+    // No `#` fragment at all, so parseVersionedVm returns undefined; the
+    // proof otherwise keeps its fixed shape, so this fires past the shape
+    // check and inside the per-proof pre-pass.
+    tampered[1]!.proof[0]!.verificationMethod = 'not-a-did-url'
+    await expect(
+      verifyResourceLog({
+        entries: tampered,
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/not a versioned verification-method DID URL/)
+  })
 })
 
 describe('verifyResourceLog (continuity against the chain-head pin)', () => {
@@ -497,6 +551,35 @@ describe('verifyResourceLog (continuity against the chain-head pin)', () => {
     // Both logs are signed: the served entries ride along as transferable
     // evidence of equivocation.
     expect(continuity.servedEntries).toEqual(forked)
+  })
+
+  it('refuses a pinned head with no ordinal as a fork, retaining served evidence', async () => {
+    const { controller, entries } = await makeBaselineLog()
+    const full = await verifyResourceLog({
+      entries,
+      controller,
+      expectedMethod: METHOD
+    })
+    // A pin whose head carries no leading 1-based ordinal cannot be located
+    // in the served log at all, so it is refused the same way a genuine
+    // fork is: as continuity 'fork', with the served entries retained.
+    const unordinalPin = { ...full.pin, head: 'not-an-ordinal' }
+    let refusal: unknown
+    try {
+      await verifyResourceLog({
+        entries,
+        controller,
+        expectedMethod: METHOD,
+        pin: unordinalPin
+      })
+    } catch (err) {
+      refusal = err
+    }
+    expect(refusal).toBeInstanceOf(ResourceLogContinuityError)
+    const continuity = refusal as ResourceLogContinuityError
+    expect(continuity.reason).toBe('fork')
+    expect(continuity.pinnedHead).toBe(unordinalPin.head)
+    expect(continuity.servedEntries).toEqual(entries)
   })
 
   it('refuses an SCID switch under the pinned location', async () => {

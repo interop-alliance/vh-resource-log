@@ -8,6 +8,12 @@
   moved into this repo's own test run, so a seal regression is caught here
   instead of only in a consumer's tests.
 
+- The verify test suite now covers four previously untested refusal branches:
+  a proof outside the profile's fixed shape, a non-object `parameters` member,
+  a proof `verificationMethod` that is not a versioned DID URL, and a pinned
+  head carrying no ordinal (refused as a fork with the served entries
+  retained).
+
 ## 0.4.1 - 2026-08-22
 
 ### Fixed

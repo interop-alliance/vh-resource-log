@@ -293,3 +293,29 @@ this repo.
 Landed 2026-08-23: vh-resource-log 0.4.2 (the sealing-sweep suite moved into
 `test/node/resourceLog-seal.test.ts`, exercising `sealResourceLog` and
 `latestAssertionRemovalIndex`); the wallet-core copy was deleted.
+
+### VRL-27: Cover the uncovered refusal branches in `verify.ts`
+
+- status: done (2026-08-23)
+- priority: medium
+- labels: tests, verify
+- verdict: confirmed
+- acceptance:
+  - [x] A proof outside the fixed shape (wrong `type`, `cryptosuite`, or
+        `proofPurpose`) is refused as the integrity class (`src/verify.ts:128`)
+  - [x] A `parameters` member that is not an object (`null`, a string) is
+        refused (`src/verify.ts:178`; the array case is VRL-8's)
+  - [x] A proof `verificationMethod` that does not parse as a versioned
+        verification-method DID URL is refused (`src/verify.ts:314`)
+  - [x] A pin whose `head` carries no ordinal yields the `fork` verdict with the
+        served entries retained (`src/verify.ts:743`)
+  - [x] `pnpm test:coverage` shows the four branches executed
+
+Each case is a one-line mutation of an existing fixture. The corrupted-pin case
+matters because pins are consumer-persisted (a hostile or corrupted pin store is
+a seam consumers implement), and it pins the verdict VRL-20 plans to fold into
+the fork guard -- land this test first or together with VRL-20.
+
+Shipped 2026-08-23: four tests added to
+`test/node/resourceLog-verify.test.ts`; coverage confirms the four branches
+executed (verify.ts uncovered lines reduced to 203 and 268).
