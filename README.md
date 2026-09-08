@@ -58,7 +58,9 @@ a log admits appends the wallet-side license refuses.
 
 Cross-package error matching is by `err.name` rather than `instanceof`; every
 error class here assigns its `name` explicitly and keeps the string stable (see
-`src/errors.ts` for the ratified contract).
+`src/errors.ts` for the ratified contract). `isResourceLogRefusal` is the
+read-side classification: which refusals a reader holding a cached copy must not
+fall back to it on (Integrity, and Continuity except a `rollback`).
 
 ## Install
 

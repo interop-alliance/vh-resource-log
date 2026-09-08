@@ -24,6 +24,7 @@
 export type { ResourceLogController } from './controller.js'
 export {
   isResourceLogConflictError,
+  isResourceLogRefusal,
   LogNotConfirmedError,
   ResourceLogClosedError,
   ResourceLogConflictError,

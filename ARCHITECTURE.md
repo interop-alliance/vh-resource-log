@@ -139,7 +139,13 @@ depend on this library; nothing here depends on them.
    explicitly and keeps the string verbatim across releases; cross-package
    catchers dispatch on `err.name`, and a drifted name fails open in them. The
    full ratified list (design sign-off 2026-08-22) is restated in
-   `src/errors.ts`'s header.
+   `src/errors.ts`'s header. The read-side classification of that list is one
+   predicate, `isResourceLogRefusal`: Integrity, and Continuity except reason
+   `rollback`, are the refusals a reader must not paper over with a cached copy.
+   A rollback is left to the cached-copy path because it may be replication lag,
+   the pin never regresses, and nothing rolled back is adopted. A consumer's
+   admission-hook refusal is deliberately outside the set; the hook's class does
+   its work pre-write.
 10. **Sealing is computed from durable state alone.** The membership change is
     read off the controller view and the log's side off the verified head's
     effective controller version, so the backstop append is idempotent and a

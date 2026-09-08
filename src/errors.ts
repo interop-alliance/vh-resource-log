@@ -44,6 +44,9 @@
  *    everywhere it crosses a package boundary (the
  *    {@link isResourceLogConflictError} predicate), so two resolved copies
  *    of this library cannot turn a benign lost race into a hard failure.
+ *    The read side has its own name-based predicate,
+ *    {@link isResourceLogRefusal}: which refusals a reader holding a cached
+ *    copy must not paper over with it.
  * 2. A body that does not parse as the profile's JSON Lines format, and a
  *    read-back entry whose `versionId` carries no ordinal, refuse with
  *    {@link ResourceLogIntegrityError}: a log that does not parse is a
@@ -172,4 +175,50 @@ export class ResourceLogConflictError extends Error {
  */
 export function isResourceLogConflictError(err: unknown): boolean {
   return err instanceof Error && err.name === 'ResourceLogConflictError'
+}
+
+/**
+ * Whether a resource-log refusal is one a reader must NOT paper over with a
+ * cached copy: a fabricated log ({@link ResourceLogIntegrityError}), or a
+ * log that is not the continuation of the pinned history
+ * ({@link ResourceLogContinuityError}) -- EXCEPT continuity reason
+ * `rollback`.
+ *
+ * This is the one implementation of the rollback carve-out the profile's
+ * log-pin rules state. A rollback is reconcilable divergence, possibly
+ * nothing worse than replication lag: the pin is never regressed and nothing
+ * rolled back is adopted, so serving the cached copy while a lagging replica
+ * catches up is exactly the offline case, and refusing there would lock a
+ * healthy account out of its own start. A `fork` or an SCID/method switch is
+ * a refusal like fabrication.
+ *
+ * Only the two adversarial classes are in the set. {@link ResourceLogClosedError}
+ * and {@link LogNotConfirmedError} are write-side outcomes a read never
+ * raises, and a consumer's admission-hook refusal (wallet-core's
+ * `ResourceLogLicenseError`, the ceremony-tail license supplied through
+ * `admitAppend`) is deliberately absent: the log is not corrupt and the
+ * signer genuinely holds the credential, so the append is unlicensed rather
+ * than forged, and a license refusal met on a read lands in the caller's
+ * soft transport class (warn, serve cached). The pre-write half of that
+ * license is where the class does its work, refusing a conformant writer
+ * before an unlicensed entry can land. Do not add it here.
+ *
+ * Matched on `err.name` rather than `instanceof` (the cross-package rule
+ * above): these errors are raised inside app-injected seams that can resolve
+ * to a different copy of this library, and an `instanceof` miss would drop a
+ * security refusal into a caller's warn-and-proceed branch. A caller adds
+ * only the names this taxonomy does not carry.
+ *
+ * @param err {unknown}
+ * @returns {boolean}
+ */
+export function isResourceLogRefusal(err: unknown): boolean {
+  const candidate = err as { name?: unknown; reason?: unknown } | null
+  if (candidate?.name === 'ResourceLogIntegrityError') {
+    return true
+  }
+  return (
+    candidate?.name === 'ResourceLogContinuityError' &&
+    candidate.reason !== 'rollback'
+  )
 }

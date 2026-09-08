@@ -1,5 +1,18 @@
 # @interop/vh-resource-log Changelog
 
+## 0.5.0 - TBD
+
+### Added
+
+- `isResourceLogRefusal(err)`, the read-side classification of the refusal
+  taxonomy: `true` for `ResourceLogIntegrityError` and for
+  `ResourceLogContinuityError` with any reason but `rollback`. It says which
+  refusals a reader holding a cached copy must not fall back to it on; a
+  rollback is reconcilable divergence under the profile's log-pin rules and is
+  left to the caller's cached-copy path. Matched by `err.name`, like the
+  conflict predicate. Moved here from `@interop/wallet-core`, which will
+  re-export it.
+
 ## 0.4.2 - 2026-09-08
 
 ### Added
