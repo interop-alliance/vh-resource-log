@@ -15,8 +15,10 @@
  * The seam is keyed: every read and write names the log it concerns with a
  * `logId`, so one store instance serves every log a wallet holds. The
  * consuming package supplies the key at every call, built by
- * {@link resourceLogPinId} (or a named builder over it), so an app implements
- * one keyed store and never chooses keys itself.
+ * {@link resourceLogPinId} for a log stored as a Resource, or by
+ * {@link collectionLogPinId} for a Collection's governing history log (or by
+ * a named builder over either), so an app implements one keyed store and
+ * never chooses keys itself.
  */
 
 /**
@@ -41,8 +43,9 @@ export interface ResourceLogHeadPin {
  * The `logId` uniquely names one log among all the logs this store instance
  * serves: one store may serve every log a wallet holds, keyed per log, and two
  * different logs must never share a `logId`. The consuming package supplies
- * the key at every read and write, built by {@link resourceLogPinId} (or a
- * named builder over it), so an implementation never chooses keys of its own.
+ * the key at every read and write, built by {@link resourceLogPinId} or
+ * {@link collectionLogPinId} (or a named builder over either), so an
+ * implementation never chooses keys of its own.
  */
 export interface ResourceLogPinStore {
   read(options: { logId: string }): Promise<ResourceLogHeadPin | null>
@@ -79,15 +82,65 @@ export function resourceLogPinId({
   collectionId: string
   resourceId: string
 }): string {
-  assertUrlSafeSegment('spaceId', spaceId)
-  assertUrlSafeSegment('collectionId', collectionId)
   assertUrlSafeSegment('resourceId', resourceId)
-  return `space/${spaceId}/${collectionId}/${resourceId}`
+  return `${collectionPrefix({ spaceId, collectionId })}/${resourceId}`
 }
 
 /**
- * Guards one `resourceLogPinId` segment: it must be non-empty and must not
- * contain `/`, per the WAS rule that Space, Collection, and Resource ids are
+ * The pin-slot key for a Collection's governing history log: the log kept at
+ * the Collection's `meta/log` sub-resource, which governs the Collection's
+ * own state rather than one Resource in it.
+ *
+ * It gets its own builder because that sub-resource sits under the reserved
+ * `meta` segment rather than under a Resource id. `resourceLogPinId` refuses
+ * a `/` inside a segment, correctly, since Resource ids are URL-safe, so it
+ * cannot name this two-segment tail.
+ *
+ * In every other respect it follows `resourceLogPinId`, as documented there:
+ * an opaque host-free identity key for pin storage, with `spaceId` and
+ * `collectionId` guarded by the same `TypeError`.
+ *
+ * @param options {object}
+ * @param options.spaceId {string}   the Space the Collection lives in
+ * @param options.collectionId {string}   the Collection whose log this is
+ * @returns {string}
+ * @throws {TypeError}
+ */
+export function collectionLogPinId({
+  spaceId,
+  collectionId
+}: {
+  spaceId: string
+  collectionId: string
+}): string {
+  return `${collectionPrefix({ spaceId, collectionId })}/meta/log`
+}
+
+/**
+ * The host-free `space/<spaceId>/<collectionId>` prefix both builders share,
+ * with its two segments guarded.
+ *
+ * @param options {object}
+ * @param options.spaceId {string}
+ * @param options.collectionId {string}
+ * @returns {string}
+ * @throws {TypeError}
+ */
+function collectionPrefix({
+  spaceId,
+  collectionId
+}: {
+  spaceId: string
+  collectionId: string
+}): string {
+  assertUrlSafeSegment('spaceId', spaceId)
+  assertUrlSafeSegment('collectionId', collectionId)
+  return `space/${spaceId}/${collectionId}`
+}
+
+/**
+ * Guards one pin-slot key segment: it must be non-empty and must not contain
+ * `/`, per the WAS rule that Space, Collection, and Resource ids are
  * URL-safe.
  *
  * @param name {string}
@@ -97,7 +150,7 @@ export function resourceLogPinId({
 function assertUrlSafeSegment(name: string, value: string): void {
   if (value.length === 0 || value.includes('/')) {
     throw new TypeError(
-      `resourceLogPinId: ${name} must be a non-empty id without "/" (WAS ids are URL-safe); got ${JSON.stringify(value)}`
+      `${name} must be a non-empty id without "/" (WAS ids are URL-safe); got ${JSON.stringify(value)}`
     )
   }
 }

@@ -219,8 +219,8 @@ rule (spec.md:1345-1347) is written per entry.
   valid id and the collision this item worried about cannot arise from valid
   ids. Encoding also needlessly changed pin ids for `urn:uuid:` spaceIds.
   Resolved instead with a guard: `resourceLogPinId` throws a `TypeError` on an
-  empty or slash-bearing segment. The pin id shape (`space/<spaceId>/
-  <collectionId>/<resourceId>`) is unchanged.
+  empty or slash-bearing segment. The pin id shape is unchanged
+  (`space/<spaceId>/<collectionId>/<resourceId>`).
 - acceptance:
   - [x] Two distinct `{ spaceId, collectionId, resourceId }` triples can never
         produce the same pin id (by refusing slash-bearing segments)
@@ -264,10 +264,10 @@ design section 2), and `settle`'s read-back only catches it as `scid-switch`
 after `store.create` has landed a new log at the resource. Found by the VRL-2
 ceremony-reviewer pass over wallet-core's log-governed store, 2026-08-22.
 
-Landed 2026-08-22: vh-resource-log 0.4.1 (`readResourceLog` consults the pin
-on an absent log; `createResourceLog` consults it before building or writing)
-and wallet-core 0.53.0 (the governed store's `create` consults the pin; read
-paths surface the refusal through the library).
+Landed 2026-08-22: vh-resource-log 0.4.1 (`readResourceLog` consults the pin on
+an absent log; `createResourceLog` consults it before building or writing) and
+wallet-core 0.53.0 (the governed store's `create` consults the pin; read paths
+surface the refusal through the library).
 
 ### VRL-10: Move the sealing-sweep test suite into this repo
 
@@ -316,9 +316,9 @@ matters because pins are consumer-persisted (a hostile or corrupted pin store is
 a seam consumers implement), and it pins the verdict VRL-20 plans to fold into
 the fork guard -- land this test first or together with VRL-20.
 
-Shipped 2026-08-23: four tests added to
-`test/node/resourceLog-verify.test.ts`; coverage confirms the four branches
-executed (verify.ts uncovered lines reduced to 203 and 268).
+Shipped 2026-08-23: four tests added to `test/node/resourceLog-verify.test.ts`;
+coverage confirms the four branches executed (verify.ts uncovered lines reduced
+to 203 and 268).
 
 ### VRL-28: Unit-test the `entry.ts` guards and `versionIdOrdinal`
 
@@ -341,8 +341,7 @@ change.
 
 Shipped 2026-08-23: added `test/node/entry.test.ts` -- an `it.each` table
 pinning `versionIdOrdinal` for the five inputs, `history`-state refusals for
-both entry builders, and the no-ordinal head refusal in
-`buildResourceLogEntry`.
+both entry builders, and the no-ordinal head refusal in `buildResourceLogEntry`.
 
 ### VRL-29: Cover `createResourceLog`'s error-propagation branches
 
@@ -364,9 +363,8 @@ These are the branches that keep "create my genesis" from degrading into "adopt
 whatever the host serves" on an unexpected port failure; all three are cheap to
 drive through `memoryLogStore` wrappers.
 
-Shipped 2026-08-23: three tests added to
-`test/node/resourceLog-append.test.ts`; coverage confirms append.ts lines 351,
-363, and 372 each execute. The pre-existing "non-Integrity throw" test was
-found to exercise the genesis build path (the broken controller threw before
-the pre-write verify ran) and was renamed accordingly.
-
+Shipped 2026-08-23: three tests added to `test/node/resourceLog-append.test.ts`;
+coverage confirms append.ts lines 351, 363, and 372 each execute. The
+pre-existing "non-Integrity throw" test was found to exercise the genesis build
+path (the broken controller threw before the pre-write verify ran) and was
+renamed accordingly.

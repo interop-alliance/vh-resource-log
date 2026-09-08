@@ -30,7 +30,8 @@ src/verify.ts      Full chain verification, terminal entries, continuity
                    against the chain-head pin, the handover check, and the
                    pre-write pass verifyResourceLogAppend
 src/pin.ts         The chain-head pin port (ResourceLogHeadPin,
-                   ResourceLogPinStore, resourceLogPinId, memory impl)
+                   ResourceLogPinStore, resourceLogPinId,
+                   collectionLogPinId, memory impl)
 src/append.ts      readResourceLog / appendResourceLog / createResourceLog
                    (verify-build-verify-CAS-rebase-confirm)
 src/seal.ts        The sealing sweep (latestAssertionRemovalIndex,
@@ -59,20 +60,22 @@ depend on this library; nothing here depends on them.
    handover.** The pin never regresses; a rollback, fork, SCID switch, or method
    switch against it refuses with `ResourceLogContinuityError`, and fork
    refusals retain the served entries as transferable evidence of equivocation.
-   An absent log is pre-genesis only while no pin is held: once a pin exists
-   for the slot, a host serving nothing there is a `rollback`, through
+   An absent log is pre-genesis only while no pin is held: once a pin exists for
+   the slot, a host serving nothing there is a `rollback`, through
    `readResourceLog` and every path over it, and `createResourceLog` consults
    the pin before it builds or writes anything, so a hidden log is never
    overwritten with a fresh genesis.
-4. **Pin slot keys are derived by the library** (`resourceLogPinId`), not chosen
-   by a store implementation, and are host-free
-   (`space/<spaceId>/<collectionId>/<resourceId>`): a log served from a claimed
-   new host lands in the SAME slot and is checked against the pin already
-   held, rather than opening a fresh trust-on-first-use slate. WAS requires
-   Space, Collection, and Resource ids to be URL-safe, so a `/` cannot appear
-   inside a valid id and the plain slash-joined key stays unambiguous.
-   `resourceLogPinId` throws a plain `TypeError` if any segment is empty or
-   contains a `/`, rather than building a key that could collide.
+4. **Pin slot keys are derived by the library**, not chosen by a store
+   implementation: `resourceLogPinId` builds
+   `space/<spaceId>/<collectionId>/<resourceId>` for a log stored as a Resource,
+   and `collectionLogPinId` builds `space/<spaceId>/<collectionId>/meta/log` for
+   a Collection's governing history log. Both keys are host-free: a log served
+   from a claimed new host lands in the SAME slot and is checked against the pin
+   already held, rather than opening a fresh trust-on-first-use slate. WAS
+   requires Space, Collection, and Resource ids to be URL-safe, so a `/` cannot
+   appear inside a valid id and the plain slash-joined key stays unambiguous.
+   Both builders throw a plain `TypeError` if any segment is empty or contains a
+   `/`, rather than building a key that could collide.
 5. **The controller view is resolved independently of the host serving the
    log.** The `ResourceLogController` port carries no resolution -- it is a view
    the caller builds from an already verified document -- which is what enforces
@@ -273,12 +276,12 @@ ARCHITECTURE.md Glossary section.
   static controller). Entries under it carry no controller versionId and every
   controller-version rule degrades to current-document verification.
 - **Controller versionId** -- the controller-log version a proof names through
-  the `versionId` DID parameter on its `verificationMethod` (the lone
-  parameter, built and parsed by one codec in `vmFragment.ts`): the controller
-  head as the writer last verified it, and the version at which
-  `assertionMethod` membership is checked on read. Expressed inside the verifier as an index into
-  the controller view's `versionIds`. Defined per proof, but an entry carries
-  only one: every proof of an entry must carry the same controller versionId, by
+  the `versionId` DID parameter on its `verificationMethod` (the lone parameter,
+  built and parsed by one codec in `vmFragment.ts`): the controller head as the
+  writer last verified it, and the version at which `assertionMethod` membership
+  is checked on read. Expressed inside the verifier as an index into the
+  controller view's `versionIds`. Defined per proof, but an entry carries only
+  one: every proof of an entry must carry the same controller versionId, by
   distinct signing keys (invariant 12); it is the entry's, not each proof's own.
   Avoid: checkpoint, pinned version, anchor.
 - **Head controller version** -- the controller version the verified entries so
@@ -325,9 +328,10 @@ ARCHITECTURE.md Glossary section.
   full verification, replaced only across a verified handover (invariant 3).
   Avoid: checkpoint, head cache, trust anchor.
 - **Pin slot** -- the keyed place a `ResourceLogPinStore` holds one log's pin,
-  named by the `logId` the library derives with `resourceLogPinId` (invariant
-  4). Wallet-core's named builders (`accountLogPinId`, and siblings) wrap it.
-  Avoid: pin key, storage key.
+  named by the `logId` the library derives with `resourceLogPinId`, or with
+  `collectionLogPinId` for a Collection's governing history log (invariant 4).
+  Wallet-core's named builders (`accountLogPinId`, and siblings) wrap one or the
+  other. Avoid: pin key, storage key.
 - **Continuity** -- the relation a served log must hold to the pin: same method
   and SCID, and a history that descends from the pinned head. Its failures are
   the `ResourceLogContinuityError` kinds (rollback, fork, scid-switch,

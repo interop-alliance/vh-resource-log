@@ -42,6 +42,7 @@ export {
   type ResourceLogSigner
 } from './entry.js'
 export {
+  collectionLogPinId,
   memoryResourceLogPinStore,
   resourceLogPinId,
   type ResourceLogHeadPin,

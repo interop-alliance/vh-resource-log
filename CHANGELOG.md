@@ -2,22 +2,27 @@
 
 ## 0.4.2 - TBD
 
+### Added
+
+- `collectionLogPinId({ spaceId, collectionId })` builds the pin slot key
+  `space/<spaceId>/<collectionId>/meta/log`, for a Collection's governing
+  history log at its `meta/log` sub-resource.
+
 ### Changed
 
-- The sealing-sweep test suite (`sealResourceLog`, `latestAssertionRemovalIndex`)
-  moved into this repo's own test run, so a seal regression is caught here
-  instead of only in a consumer's tests.
+- The sealing-sweep test suite (`sealResourceLog`,
+  `latestAssertionRemovalIndex`) moved into this repo's own test run, so a seal
+  regression is caught here instead of only in a consumer's tests.
 
-- The verify test suite now covers four previously untested refusal branches:
-  a proof outside the profile's fixed shape, a non-object `parameters` member,
-  a proof `verificationMethod` that is not a versioned DID URL, and a pinned
-  head carrying no ordinal (refused as a fork with the served entries
-  retained).
+- The verify test suite now covers four previously untested refusal branches: a
+  proof outside the profile's fixed shape, a non-object `parameters` member, a
+  proof `verificationMethod` that is not a versioned DID URL, and a pinned head
+  carrying no ordinal (refused as a fork with the served entries retained).
 
 - New `entry.ts` unit tests pin `versionIdOrdinal`'s parsing table and the
-  builder-side guards: both entry builders refuse a state carrying the
-  reserved `history` member, and `buildResourceLogEntry` refuses a head whose
-  `versionId` carries no ordinal.
+  builder-side guards: both entry builders refuse a state carrying the reserved
+  `history` member, and `buildResourceLogEntry` refuses a head whose `versionId`
+  carries no ordinal.
 
 ## 0.4.1 - 2026-08-22
 
