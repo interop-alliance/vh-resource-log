@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.5.1 - TBD
+
+### Changed
+
+- Update to latest ed25519 key and storage-core deps.
+
 ## 0.5.0 - 2026-09-08
 
 ### Added

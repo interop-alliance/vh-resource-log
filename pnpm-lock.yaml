@@ -9,18 +9,18 @@ importers:
   .:
     dependencies:
       '@interop/did-method-webvh':
-        specifier: ^5.5.1
-        version: 5.5.1
+        specifier: ^5.9.0
+        version: 5.9.0
       '@interop/storage-core':
-        specifier: ^0.9.1
-        version: 0.9.1
+        specifier: ^0.13.0
+        version: 0.13.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.4.1)
       '@interop/ed25519-verification-key':
-        specifier: ^8.0.4
-        version: 8.0.4
+        specifier: ^8.2.0
+        version: 8.2.0
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
@@ -153,12 +153,12 @@ packages:
     resolution: {integrity: sha512-KD/AFAfnsDVa7Kz3yzx0t/L1A+GlFI0RahbtXsfzcznRlN63fPZCJ6W3C+unPyksCYsILZIHcOFFJkZe6eKtkw==}
     engines: {node: '>=24.0'}
 
-  '@interop/did-method-webvh@5.5.1':
-    resolution: {integrity: sha512-SEoifXSP/d9CZ8qjM1S2uswTdh4G1HVvxi7bKt3OhjglX8v87l7Oq1tV/XYCfRyaDBs9dW7m9CH4GdQIA+KRRA==}
+  '@interop/did-method-webvh@5.9.0':
+    resolution: {integrity: sha512-608PzlX77Hu9ELzpeE49EmmFn8ASYTxIYzxeXsMkQhkDaATm5BpWkecApbJFvNo8s8zeozfLeVUYF7iTztpUiw==}
     engines: {node: '>=22'}
 
-  '@interop/ed25519-verification-key@8.0.4':
-    resolution: {integrity: sha512-Rban9niHY+MJSj3xrgsOmhYIzHz1TjmCsqOrrsyKr+Uk+xNwK1P9QA7RoR7wwjZ98o1rkD0wTl23wga81oY7hw==}
+  '@interop/ed25519-verification-key@8.2.0':
+    resolution: {integrity: sha512-JG5sPe/9FHPsi41tmwz7f6UyKxULhoEABxIHKCKKxFgfrP52Wi6FFwnPYO93K254rw1cZI0omdqczN76F7dQdg==}
     engines: {node: '>=20'}
     peerDependencies:
       react-native-get-random-values: '>=1.8.0'
@@ -166,8 +166,8 @@ packages:
       react-native-get-random-values:
         optional: true
 
-  '@interop/storage-core@0.9.1':
-    resolution: {integrity: sha512-YF+qMjuBn+ehqqY+dKNRF6k34f0uvWh+ojzg+mC71TPtJ6B/7+Qjm8MTYPFRfoW8wekEoSB525a1uto+mMfoKQ==}
+  '@interop/storage-core@0.13.0':
+    resolution: {integrity: sha512-LrH09nIaLjz+Y4inQO6fgA6cSuv1CypX8p/bNRFKC0EpG36Cp2A24abEmV4jL+HW4Vi4cD0Q3yOaH7WViBkJwg==}
     engines: {node: '>=22.0'}
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1117,7 +1117,7 @@ snapshots:
     dependencies:
       '@scure/base': 2.3.0
 
-  '@interop/did-method-webvh@5.5.1':
+  '@interop/did-method-webvh@5.9.0':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
       '@noble/curves': 2.3.0
@@ -1125,14 +1125,14 @@ snapshots:
       '@scure/base': 2.3.0
       json-canonicalize: 3.0.0
 
-  '@interop/ed25519-verification-key@8.0.4':
+  '@interop/ed25519-verification-key@8.2.0':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
       '@noble/ed25519': 3.1.0
       '@noble/hashes': 2.3.0
       '@scure/base': 2.3.0
 
-  '@interop/storage-core@0.9.1':
+  '@interop/storage-core@0.13.0':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
 
