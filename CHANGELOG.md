@@ -1,6 +1,6 @@
 # @interop/vh-resource-log Changelog
 
-## 0.5.2 - TBD
+## 0.5.2 - 2026-09-18
 
 - Update to latest storage-core and did:webvh deps.
 
