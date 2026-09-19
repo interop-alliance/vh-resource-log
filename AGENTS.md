@@ -70,7 +70,7 @@ extension even though source files are `.ts` — e.g.
 The current shape of the library lives in [ARCHITECTURE.md](./ARCHITECTURE.md),
 rationale inline, updated in the same change set that alters the shape. It is
 load-bearing for the conventions below: the design gate scopes on the invariants
-it documents, `touches:` entries name it as a deliverable, and the
+it documents, `touches:` entries name it so the follow-up gets filed, and the
 breaking-release audit checks it against the code.
 
 ## Roadmap & Task Conventions
