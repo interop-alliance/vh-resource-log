@@ -12,15 +12,15 @@ importers:
         specifier: ^5.10.0
         version: 5.10.0
       '@interop/storage-core':
-        specifier: ^0.18.0
-        version: 0.18.0
+        specifier: ^0.19.0
+        version: 0.19.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.4.1)
       '@interop/ed25519-verification-key':
-        specifier: ^8.2.0
-        version: 8.2.0
+        specifier: ^8.2.1
+        version: 8.2.1
       '@playwright/test':
         specifier: ^1.60.0
         version: 1.60.0
@@ -153,12 +153,16 @@ packages:
     resolution: {integrity: sha512-KD/AFAfnsDVa7Kz3yzx0t/L1A+GlFI0RahbtXsfzcznRlN63fPZCJ6W3C+unPyksCYsILZIHcOFFJkZe6eKtkw==}
     engines: {node: '>=24.0'}
 
+  '@interop/data-integrity-core@8.8.0':
+    resolution: {integrity: sha512-c5zWCHMfMXmEBbJs8AZXvrvbNKVMnTXBcp5poojUtRhpEi9qHi81jF/F1NmLiVQApIQITpIDyBG7/79WxIjCzA==}
+    engines: {node: '>=24.0'}
+
   '@interop/did-method-webvh@5.10.0':
     resolution: {integrity: sha512-Ztc5aSm3Kh8d8teKeA5IIov9gmu+aBBTZb+yJ6GVuQPfwazN6O9wuLuGAom5RvBhh0OxB60nFYdxtDkODpqPtA==}
     engines: {node: '>=22'}
 
-  '@interop/ed25519-verification-key@8.2.0':
-    resolution: {integrity: sha512-JG5sPe/9FHPsi41tmwz7f6UyKxULhoEABxIHKCKKxFgfrP52Wi6FFwnPYO93K254rw1cZI0omdqczN76F7dQdg==}
+  '@interop/ed25519-verification-key@8.2.1':
+    resolution: {integrity: sha512-ft1j14xt6uu6T27begDXn15Cb7Mab1OZZOpbQxMhKyRrhKey56i+HMx2Ia53XPimhdXuVAGj7nCEFlcR4yOj1w==}
     engines: {node: '>=20'}
     peerDependencies:
       react-native-get-random-values: '>=1.8.0'
@@ -166,8 +170,8 @@ packages:
       react-native-get-random-values:
         optional: true
 
-  '@interop/storage-core@0.18.0':
-    resolution: {integrity: sha512-T4Cjkv4127pw7/wS6UcwrJdAOYgCKE++LFtvntZX4rX8DDfZzMx7GkvAgqhmivFmyYn+po+6cvE8ir6a3yHaxQ==}
+  '@interop/storage-core@0.19.0':
+    resolution: {integrity: sha512-Nva6hFpYRyJrDST7wHEggFOVYmeiG36tsIjQjVFvN2JFWS1S8FdUun+Tstx5jzpTbdUNxAYN0y0J4UdOOM/yyQ==}
     engines: {node: '>=22.0'}
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1117,6 +1121,10 @@ snapshots:
     dependencies:
       '@scure/base': 2.3.0
 
+  '@interop/data-integrity-core@8.8.0':
+    dependencies:
+      '@scure/base': 2.3.0
+
   '@interop/did-method-webvh@5.10.0':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
@@ -1125,14 +1133,14 @@ snapshots:
       '@scure/base': 2.3.0
       json-canonicalize: 3.0.0
 
-  '@interop/ed25519-verification-key@8.2.0':
+  '@interop/ed25519-verification-key@8.2.1':
     dependencies:
-      '@interop/data-integrity-core': 8.7.1
+      '@interop/data-integrity-core': 8.8.0
       '@noble/ed25519': 3.1.0
       '@noble/hashes': 2.3.0
       '@scure/base': 2.3.0
 
-  '@interop/storage-core@0.18.0':
+  '@interop/storage-core@0.19.0':
     dependencies:
       '@interop/data-integrity-core': 8.7.1
 
