@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.5.5 - TBD
+
+### Changed
+
+- Update to latest did:webvh client.
+
 ## 0.5.4 - 2026-09-27
 
 ### Changed
