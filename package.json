@@ -42,8 +42,8 @@
   "types": "dist/index.d.ts",
   "sideEffects": false,
   "dependencies": {
-    "@interop/did-method-webvh": "^5.10.0",
-    "@interop/storage-core": "^0.19.0"
+    "@interop/did-method-webvh": "^5.11.0",
+    "@interop/storage-core": "^0.20.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
