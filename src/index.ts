@@ -67,3 +67,14 @@ export {
   parseVersionedVm,
   vmFragmentOf
 } from './vmFragment.js'
+export {
+  memberKeyMultibase,
+  relationIds,
+  relationKeyMultibases,
+  relationMembers,
+  resolvedRelationMethods,
+  type ControllerDocument,
+  type RelationMember,
+  type VerificationMethodShape,
+  type VerificationRelation
+} from './document.js'

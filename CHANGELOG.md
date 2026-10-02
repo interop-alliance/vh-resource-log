@@ -1,5 +1,18 @@
 # @interop/vh-resource-log Changelog
 
+## 0.6.0 - TBD
+
+### Added
+
+- The controller-document readers (`src/document.ts`): `relationMembers`,
+  `resolvedRelationMethods`, and `relationIds` resolve a verification relation
+  (string references through `verificationMethod`, embedded methods verbatim),
+  and `memberKeyMultibase` / `relationKeyMultibases` read the key multibase a
+  relation member names under one rule: the id fragment and the method's
+  `publicKeyMultibase` must agree when both are present, either alone is the
+  key, and a disagreeing member names no key. Moved up from wallet-core so every
+  consumer reads a document the same way.
+
 ## 0.5.5 - 2026-09-28
 
 ### Changed

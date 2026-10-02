@@ -25,6 +25,10 @@ src/errors.ts      The refusal taxonomy and the ratified name contracts
 src/controller.ts  The controller-view port verification authorizes against,
                    including the optional admitAppend admission hook
 src/vmFragment.ts  The fragment reader and versioned-VM DID URL codec
+src/document.ts    The controller-document readers: relation resolution
+                   (relationMembers, resolvedRelationMethods, relationIds)
+                   and the one key-multibase rule a relation member is read
+                   under (memberKeyMultibase, relationKeyMultibases)
 src/entry.ts       Genesis (two-pass SCID) and next-entry builders + signing
 src/verify.ts      Full chain verification, terminal entries, continuity
                    against the chain-head pin, the handover check, and the
