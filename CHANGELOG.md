@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.6.1 - TBD
+
+### Changed
+
+- Update to latest storage-core@0.28.0
+
 ## 0.6.0 - 2026-10-01
 
 ### Added
