@@ -24,11 +24,14 @@ src/store.ts       The ResourceLogStore port (read/append/create) and the
 src/errors.ts      The refusal taxonomy and the ratified name contracts
 src/controller.ts  The controller-view port verification authorizes against,
                    including the optional admitAppend admission hook
-src/vmFragment.ts  The fragment reader and versioned-VM DID URL codec
+src/vmFragment.ts  The fragment reader (did:key kids, minted ids) and the
+                   versioned-VM DID URL codec; not a key rule
 src/document.ts    The controller-document readers: relation resolution
                    (relationMembers, resolvedRelationMethods, relationIds)
                    and the one key-multibase rule a relation member is read
-                   under (memberKeyMultibase, relationKeyMultibases)
+                   under (memberKeyMultibase, relationKeyMultibases): the
+                   resolved method's publicKeyMultibase, with the id
+                   fragment an opaque selector (DID Core)
 src/entry.ts       Genesis (two-pass SCID) and next-entry builders + signing
 src/verify.ts      Full chain verification, terminal entries, continuity
                    against the chain-head pin, the handover check, and the
@@ -184,15 +187,16 @@ depend on this library; nothing here depends on them.
     that disagree, or a repeated key, refuse the log as Integrity. Presence or
     absence of a controller versionId is checked on every proof; whether the
     proofs agree, whether that versionId is known, and its monotonicity against
-    the head controller version are each checked once per entry. Every signing
-    key's `assertionMethod` membership is checked at the entry's controller
-    versionId, and it becomes the head controller version for the next entry.
-    The rule exists because the proof array sits outside the hash and every
-    signature (`proof` is omitted from the hash input, and each proof signs the
-    entry minus the array), so a host can duplicate, reorder, or delete proofs
-    undetected; the reduction from proofs to one entry-level controller
-    versionId is computed before the kernel checks any signature, since the
-    kernel verifies proofs in array order with no lookahead. Decision
+    the head controller version are each checked once per entry. Every proof's
+    verification method is dereferenced to an `assertionMethod` member of the
+    document at the entry's controller versionId (the authorization rule in the
+    Glossary), and that versionId becomes the head controller version for the
+    next entry. The rule exists because the proof array sits outside the hash
+    and every signature (`proof` is omitted from the hash input, and each proof
+    signs the entry minus the array), so a host can duplicate, reorder, or
+    delete proofs undetected; the reduction from proofs to one entry-level
+    controller versionId is computed before the kernel checks any signature,
+    since the kernel verifies proofs in array order with no lookahead. Decision
     [0002](decisions/0002-one-controller-version-per-entry.md).
 
 ## Ownership heuristics
@@ -277,9 +281,11 @@ ARCHITECTURE.md Glossary section.
 
 - **Controller view** -- the `ResourceLogController` port: what verification
   consumes of the independently verified controller document (the DID, the
-  ordered `versionIds`, `assertionKeysAt`, and the optional admission hook). The
+  ordered `versionIds`, `documentAt`, and the optional admission hook). The
   caller builds it from a document it has already verified; the port carries no
-  resolution (invariant 5). The did:webvh adapter over a wallet account document
+  resolution (invariant 5), and it applies no key rule of its own: it answers
+  with the document at a version, and the verifier reads it through the shared
+  readers in `document.ts`. The did:webvh adapter over a wallet account document
   lives in `@interop/wallet-core`. Avoid: resolver, controller document (the
   thing the view is taken from), DID document.
 - **Unversioned controller** -- a controller view with an empty `versionIds` (a
@@ -308,11 +314,18 @@ ARCHITECTURE.md Glossary section.
   compares it against the controller's latest membership change. Avoid:
   effective anchor.
 - **Authorization rule** -- the profile's whole append-authority test: the
-  proof's key is a member of `assertionMethod` at the controller version it
-  carries. It is checked against that version on purpose, so a signature made
-  while the key was listed verifies forever. The server-side counterpart, which
-  checks the document as resolved now, is the current-key-set rule in
-  freewallet's and wallet-core's glossaries; the two are deliberately
+  proof's `verificationMethod` DID URL dereferences to an `assertionMethod`
+  member (`${did}#${fragment}`) of the controller document at the controller
+  version it carries, and the proof verifies under the key that member publishes
+  (`publicKeyMultibase`). The fragment is an opaque selector, as in DID Core;
+  the stack mints it equal to the key, but nothing in the verifier reads it as
+  one, so a document whose member id and published key disagree is verified
+  under the published key. Member ids are compared in absolute form, with a
+  relative id resolved against the document's `id` (`relationMemberNamed` in
+  `document.ts`). It is checked against that version on purpose, so a signature
+  made while the method was listed verifies forever. The server-side
+  counterpart, which checks the document as resolved now, is the current-key-set
+  rule in freewallet's and wallet-core's glossaries; the two are deliberately
   asymmetric. Avoid: current-key-set rule (for this rule), membership check.
 - **Admission hook** -- the controller view's optional `admitAppend`: the
   per-proof seam through which controller-domain append policy reaches the
@@ -323,9 +336,10 @@ ARCHITECTURE.md Glossary section.
   content).
 - **Writer** -- the client appending an entry, signing under its enrolled
   Ed25519 key through the `ResourceLogSigner` seam. Identified on the wire only
-  by the key's multibase fragment. Not wallet-core's `writerId`, which is an
-  unkeyed attribution label for revision history and names nothing here. Avoid:
-  author, device, client (wallet-core's term for the keyed identity).
+  by the verification method its proof names, minted under the key's multibase
+  as the fragment. Not wallet-core's `writerId`, which is an unkeyed attribution
+  label for revision history and names nothing here. Avoid: author, device,
+  client (wallet-core's term for the keyed identity).
 - **Kernel** -- the did:webvh log kernel in `@interop/did-method-webvh`: entry
   hashing, `versionId` and SCID construction, proof creation and verification,
   consumed as named imports and never re-derived.
@@ -376,11 +390,13 @@ ARCHITECTURE.md Glossary section.
 
 ### Sealing
 
-- **Membership change** -- a controller version whose `assertionMethod` set lost
-  a member against its predecessor; the latest one is
-  `latestAssertionRemovalIndex`. Only assertion removals count, so a
-  `keyAgreement`-only method leaving the document never registers. Avoid:
-  revocation event, roster change.
+- **Membership change** -- a controller version whose set of published
+  `assertionMethod` keys lost a member against its predecessor; the latest one
+  is `latestAssertionRemovalIndex`. Read under the same key rule as the
+  authorization rule, so a key replaced under an unchanged member id is a
+  removal and a dropped reference nothing backed is not. Only assertion removals
+  count, so a `keyAgreement`-only method leaving the document never registers.
+  Avoid: revocation event, roster change.
 - **Sealing append** -- an entry carrying a controller version at or past the
   latest membership change, proving the surviving writers extended the log under
   the new membership. Any ordinary post-edit write is one by construction.

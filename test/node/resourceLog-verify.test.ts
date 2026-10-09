@@ -28,6 +28,7 @@ import {
   verifyResourceLog,
   verifyResourceLogAppend,
   verifyResourceLogHandover,
+  type ControllerDocument,
   type ResourceLogController
 } from '../../src/index.js'
 import {
@@ -38,7 +39,9 @@ import {
 import {
   buildTerminalEntry,
   coSignEntry,
-  makeLogClient
+  resignEntryUnder,
+  makeLogClient,
+  type LogTestClient
 } from './fixtures/log.js'
 
 const METHOD = 'resource-log:0.1'
@@ -1073,9 +1076,11 @@ describe('verifyResourceLog (one controller versionId per entry)', () => {
     expect(calls).toBe(0)
   })
 
-  it('refuses a second proof by the same key at another controller versionId as a repeated key', async () => {
-    // The per-proof distinct-keys check runs before the once-per-entry
-    // equality check, so the repeated key is what the refusal names.
+  it('refuses a second proof by the same key at another controller versionId as disagreeing versions', async () => {
+    // Keys are known only once the entry's controller version is settled
+    // (the document at it is what the proofs dereference against), so the
+    // once-per-entry equality check runs first and is what the refusal
+    // names; the repeated key is never reached.
     const { alice, viewAt, full, genesis } = await makeMembers()
     const second = await buildResourceLogEntry({
       head: genesis,
@@ -1094,7 +1099,7 @@ describe('verifyResourceLog (one controller versionId per entry)', () => {
         controller: full,
         expectedMethod: METHOD
       })
-    ).rejects.toThrow(/two proofs by one signing key/)
+    ).rejects.toThrow(/disagree on the entry's controller versionId/)
   })
 
   it('gives the reversed proof array the same verdict and the same hook inputs up to proofKeys order', async () => {
@@ -1283,15 +1288,15 @@ describe('verifyResourceLog (one controller versionId per entry)', () => {
     ])
   })
 
-  it('resolves assertionKeysAt once per entry, co-signed or not', async () => {
+  it('resolves documentAt once per entry, co-signed or not', async () => {
     const { full, genesis, coSignedSecond } = await makeMembers()
     const coSigned = await coSignedSecond({ aliceAt: 3, bobAt: 3 })
     const resolved: Array<string | undefined> = []
     const counting: ResourceLogController = {
       ...full,
-      async assertionKeysAt(versionId) {
+      async documentAt(versionId) {
         resolved.push(versionId)
-        return full.assertionKeysAt(versionId)
+        return full.documentAt(versionId)
       }
     }
     await verifyResourceLog({
@@ -1303,18 +1308,18 @@ describe('verifyResourceLog (one controller versionId per entry)', () => {
     expect(resolved).toEqual(['1-v1', '3-v3'])
   })
 
-  it('wraps a rejecting assertionKeysAt as the integrity class, once per entry', async () => {
+  it('wraps a rejecting documentAt as the integrity class, once per entry', async () => {
     const { full, genesis, coSignedSecond } = await makeMembers()
     const coSigned = await coSignedSecond({ aliceAt: 3, bobAt: 3 })
     let calls = 0
     const rejecting: ResourceLogController = {
       ...full,
-      async assertionKeysAt(versionId) {
+      async documentAt(versionId) {
         calls++
         if (versionId === '3-v3') {
           throw new Error('port unavailable')
         }
-        return full.assertionKeysAt(versionId)
+        return full.documentAt(versionId)
       }
     }
     await expect(
@@ -1456,5 +1461,254 @@ describe('verifyResourceLog (one controller versionId per entry)', () => {
     await expect(
       verifyResourceLogAppend({ entry: agreeing, controller: full, head })
     ).resolves.toBeUndefined()
+  })
+})
+
+/**
+ * The dereference: a proof's DID URL names an `assertionMethod` member by
+ * fragment, and the key the proof is verified under is that member's
+ * published `publicKeyMultibase`. The fragment is never read as a key.
+ */
+describe('verifyResourceLog (dereferenced verification method)', () => {
+  /**
+   * A two-entry log by `alice`, every proof re-signed under `fragment`
+   * (the builders themselves always mint the fragment equal to the key).
+   */
+  async function logUnder({
+    alice,
+    controller,
+    fragment
+  }: {
+    alice: LogTestClient
+    controller: ResourceLogController
+    fragment: string
+  }): Promise<ResourceLogEntry[]> {
+    const signer = alice.logSigner
+    const genesis = await resignEntryUnder({
+      entry: await buildResourceLogGenesis({
+        state: { type: 'TestState', value: 1 },
+        method: METHOD,
+        controller,
+        signer
+      }),
+      controller,
+      signer,
+      fragment
+    })
+    const second = await resignEntryUnder({
+      entry: await buildResourceLogEntry({
+        head: genesis,
+        state: { type: 'TestState', value: 2 },
+        controller,
+        signer
+      }),
+      controller,
+      signer,
+      fragment
+    })
+    return [genesis, second]
+  }
+
+  /**
+   * A controller over the empty versioned fake whose every version answers
+   * with `doc` verbatim: the seam for documents the fake cannot synthesize
+   * (relative ids, a missing `id`, a dangling reference).
+   */
+  function withDocument(doc: ControllerDocument): ResourceLogController {
+    return {
+      ...fakeController({ versions: [{ versionId: '1-v1', keys: [] }] }),
+      async documentAt() {
+        return doc
+      }
+    }
+  }
+
+  /**
+   * Builds a genesis entry signed by `alice` (fragment equal to the key, as
+   * the builders mint it) and verifies it as a one-entry log.
+   */
+  async function verifyGenesisUnder({
+    alice,
+    controller
+  }: {
+    alice: LogTestClient
+    controller: ResourceLogController
+  }): Promise<unknown> {
+    const genesis = await buildResourceLogGenesis({
+      state: { type: 'TestState', value: 1 },
+      method: METHOD,
+      controller,
+      signer: alice.logSigner
+    })
+    return verifyResourceLog({
+      entries: [genesis],
+      controller,
+      expectedMethod: METHOD
+    })
+  }
+
+  it('verifies under the published key when the fragment names another, and hands the hook the published key', async () => {
+    const alice = await makeLogClient()
+    const hookKeys: string[][] = []
+    const controller = fakeController({
+      versions: [
+        {
+          versionId: '1-v1',
+          keys: [],
+          methods: [
+            {
+              id: `${CONTROLLER_DID}#zSelector`,
+              publicKeyMultibase: alice.signingKeyMultibase
+            }
+          ]
+        }
+      ],
+      async admitAppend({ keyMultibase, proofKeys }) {
+        hookKeys.push([keyMultibase, ...proofKeys])
+      }
+    })
+    const [genesis, second] = await logUnder({
+      alice,
+      controller,
+      fragment: 'zSelector'
+    })
+    expect(second!.proof[0]!.verificationMethod).toBe(
+      `${CONTROLLER_DID}?versionId=1-v1#zSelector`
+    )
+    const verified = await verifyResourceLog({
+      entries: [genesis!, second!],
+      controller,
+      expectedMethod: METHOD
+    })
+    expect(verified.state).toEqual({ type: 'TestState', value: 2 })
+    expect(hookKeys).toEqual([
+      [alice.signingKeyMultibase, alice.signingKeyMultibase]
+    ])
+  })
+
+  it('dereferences relative member ids and references against the document id (DID Core)', async () => {
+    const alice = await makeLogClient()
+    // A reference `#zKey` resolving through a relative `verificationMethod`
+    // id, and an embedded member carrying a relative id; the document
+    // carries its own `id` for the first and none for the second.
+    const referenced = withDocument({
+      id: CONTROLLER_DID,
+      verificationMethod: [
+        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
+      ],
+      assertionMethod: ['#zKey']
+    })
+    const embedded = withDocument({
+      assertionMethod: [
+        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
+      ]
+    })
+    for (const controller of [referenced, embedded]) {
+      const entries = await logUnder({ alice, controller, fragment: 'zKey' })
+      const verified = await verifyResourceLog({
+        entries,
+        controller,
+        expectedMethod: METHOD
+      })
+      expect(verified.state).toEqual({ type: 'TestState', value: 2 })
+    }
+    // A relative id under a document whose `id` is another DID resolves
+    // against that DID, so it is not this controller's member.
+    const foreign = withDocument({
+      id: 'did:webvh:QmOther:example.com:other',
+      assertionMethod: [
+        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
+      ]
+    })
+    await expect(
+      verifyResourceLog({
+        entries: await logUnder({
+          alice,
+          controller: foreign,
+          fragment: 'zKey'
+        }),
+        controller: foreign,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/does not list under assertionMethod/)
+  })
+
+  it('refuses an entry signed by the key the fragment names when the member publishes another key', async () => {
+    const alice = await makeLogClient()
+    const bob = await makeLogClient()
+    // The member is minted under alice's multibase but publishes bob's key:
+    // alice's signature must fail under the published key rather than
+    // verify under the fragment.
+    const controller = withDocument({
+      assertionMethod: [
+        {
+          id: `${CONTROLLER_DID}#${alice.signingKeyMultibase}`,
+          publicKeyMultibase: bob.signingKeyMultibase
+        }
+      ]
+    })
+    await expect(verifyGenesisUnder({ alice, controller })).rejects.toThrow(
+      new ResourceLogIntegrityError(
+        'Resource log entry 1 failed proof verification.'
+      )
+    )
+  })
+
+  it('refuses a fragment whose member publishes no key, or that nothing backs', async () => {
+    const alice = await makeLogClient()
+    const keyless = withDocument({
+      assertionMethod: [
+        { id: `${CONTROLLER_DID}#${alice.signingKeyMultibase}` }
+      ]
+    })
+    await expect(
+      verifyGenesisUnder({ alice, controller: keyless })
+    ).rejects.toThrow(/does not list under assertionMethod/)
+    const dangling = withDocument({
+      assertionMethod: [`${CONTROLLER_DID}#${alice.signingKeyMultibase}`]
+    })
+    await expect(
+      verifyGenesisUnder({ alice, controller: dangling })
+    ).rejects.toThrow(/does not list under assertionMethod/)
+  })
+
+  it('refuses two proofs whose different fragments resolve to one key', async () => {
+    const alice = await makeLogClient()
+    const controller = fakeController({
+      versions: [
+        {
+          versionId: '1-v1',
+          keys: [],
+          methods: [
+            {
+              id: `${CONTROLLER_DID}#zOne`,
+              publicKeyMultibase: alice.signingKeyMultibase
+            },
+            {
+              id: `${CONTROLLER_DID}#zTwo`,
+              publicKeyMultibase: alice.signingKeyMultibase
+            }
+          ]
+        }
+      ]
+    })
+    const [genesis, second] = await logUnder({
+      alice,
+      controller,
+      fragment: 'zOne'
+    })
+    const twice = await coSignEntry({
+      entry: second!,
+      controller,
+      signer: alice.logSigner,
+      fragment: 'zTwo'
+    })
+    await expect(
+      verifyResourceLog({
+        entries: [genesis!, twice],
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/two proofs by one signing key/)
   })
 })

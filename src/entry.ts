@@ -26,10 +26,15 @@ import { buildVersionedVm } from './vmFragment.js'
 
 /**
  * The writer's signing seam: its enrolled Ed25519 signing key's multibase
- * (the fragment of its verification method in the controller document) and a
- * raw detached-signature hook over it. The multibase names the key in the
- * proof's `verificationMethod`; membership under `assertionMethod` at the
- * controller version is what authorizes the append.
+ * (the fragment its verification method is minted under in the controller
+ * document) and a raw detached-signature hook over it. `keyMultibase` MUST
+ * be the signing key's own multibase: the kernel names the signer by it, and
+ * the builders mint the proof's `verificationMethod` with it as the fragment
+ * (the id this stack publishes every method under). The verifier
+ * dereferences that method under `assertionMethod` at the controller
+ * version, and the key the member publishes is what the proof must verify
+ * under; a signer whose fragment names a method publishing a different key
+ * fails verification.
  */
 export interface ResourceLogSigner {
   keyMultibase: string
@@ -40,7 +45,7 @@ export interface ResourceLogSigner {
  * The writer's versioned verification-method DID URL: the controller DID, the
  * controller versionId at the controller's verified head as a `versionId`
  * DID parameter (omitted for an unversioned controller), and the signing
- * key's multibase as the fragment.
+ * key's multibase as the fragment (the id the method is minted under).
  *
  * @param options {object}
  * @param options.controller {ResourceLogController}
@@ -58,7 +63,7 @@ function versionedVerificationMethod({
     did: controller.did,
     controllerVersionId:
       controller.versionIds[controller.versionIds.length - 1],
-    keyMultibase
+    fragment: keyMultibase
   })
 }
 

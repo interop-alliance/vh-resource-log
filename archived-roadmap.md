@@ -368,3 +368,76 @@ coverage confirms append.ts lines 351, 363, and 372 each execute. The
 pre-existing "non-Integrity throw" test was found to exercise the genesis build
 path (the broken controller threw before the pre-write verify ran) and was
 renamed accordingly.
+
+### VRL-31: Verify entry proofs under the dereferenced method, not the fragment
+
+- status: done (2026-10-08)
+- priority: medium
+- labels: verify, document-readers, did-webvh
+- blocked-by: did-method-webvh WEBVH-30
+- discovered-from: wallet-core WC-287 review (2026-10-07)
+- touches:
+  - did-method-webvh (WEBVH-30, the dereference this item consumes) -- shipped:
+    WEBVH-30 (5.13.0). The port hands the verifier the document at a version and
+    the verifier dereferences the member through this library's readers, so no
+    further did-method-webvh work follows
+  - wallet-core (WC-287: `delegationRelationMultibases` drops its fragment arm;
+    `enrolledClientKeyMultibases`, `ladderVmKeyMultibases`, and
+    `verifyRecordedGrantProof` read the narrowed rule through the same names) --
+    wallet-core: WC-287 (the readers) and WC-288 (the
+    `webvhResourceLogController` adapter moves from `assertionKeysAt` to
+    `documentAt`, and the codec rename)
+  - vh-resource-log ARCHITECTURE.md (the key-multibase rule paragraph and the
+    `vmFragment.ts` module description) -- updated in this change
+- acceptance:
+  - [x] `verifyEntryProofs` (`src/verify.ts`) materializes each proof's signing
+        key by dereferencing the proof's `verificationMethod` DID URL against
+        the controller document at the URL's `versionId` (WEBVH-30), and the
+        kernel's `resolveVM` returns that method's own `publicKeyMultibase`;
+        nothing in the verifier any longer treats a URL fragment as key material
+  - [x] The `assertionMethod` admission check compares the dereferenced method's
+        id against the relation's member ids at that version, so a document
+        whose member id fragment and `publicKeyMultibase` disagree is verified
+        under the published key, the DID Core reading
+  - [x] The pre-pass over the proof array (same controller, consistent
+        `versionId`, no two proofs by one key) keeps its refusals, keyed on the
+        dereferenced methods rather than on fragments
+  - [x] `memberKeyMultibase` returns the resolved method's `publicKeyMultibase`
+        and `undefined` otherwise: a reference nothing backs names no key, and
+        an id fragment is never read as a key; `relationKeyMultibases` follows,
+        and the doc comments stop describing the fragment-equals-key convention
+        as the rule every reader applies
+  - [x] `parseVersionedVm` / `buildVersionedVm` survive as the codec for the URL
+        the appender writes (the appender still mints
+        `${did}?versionId=${id}#${multibase}`); `vmFragmentOf` keeps its callers
+        that parse a did:key kid, where the fragment is the key by the did:key
+        spec
+  - [x] Tests: an entry signed under a versioned URL whose fragment differs from
+        the named method's `publicKeyMultibase` verifies under the published key
+        or is refused by the admission check, never verified under the fragment;
+        `relationKeyMultibases` over a document with a dangling reference omits
+        it
+
+The verifier reads a proof's key out of its DID URL fragment (`parseProofVm`,
+`src/verify.ts:308`; `resolveVM` at `src/verify.ts:578`) because the did:webvh
+driver offers no dereference of a versioned DID URL over a loaded log. That
+shortcut is sound only under the stack convention that every method id is
+`${did}#${publicKeyMultibase}`, and it is the reason `memberKeyMultibase`
+(`src/document.ts:205`) reads a document member's fragment as a second statement
+of its key and refuses when the two disagree. DID Core treats the fragment as an
+opaque selector and `publicKeyMultibase` as the key. Once the driver
+dereferences the URL, the convention is load-bearing nowhere on the did:webvh
+side, and the document readers can take the DID Core reading. The appender's URL
+format is unchanged. Whether this carries the design gate is the maintainer's
+call: on a well-formed log nothing admitted or refused changes, but
+ARCHITECTURE.md documents the fragment rule as an invariant.
+
+Shipped 2026-10-08: the `ResourceLogController` port answers `documentAt`
+instead of `assertionKeysAt`; the verifier's pre-pass reads the document at the
+entry's controller version through `relationMembers`, dereferences each proof's
+`${did}#${fragment}` to its `assertionMethod` member, and verifies under that
+member's `publicKeyMultibase`. did-method-webvh's log-level
+`dereferenceVerificationMethod` is not called here because the port carries a
+document, not a log. The repeated-key refusal now runs after the entry's
+controller version is settled, so two proofs by one key at different versions
+refuse as disagreeing versions.

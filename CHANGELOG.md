@@ -1,5 +1,41 @@
 # @interop/vh-resource-log Changelog
 
+## 0.7.0 - TBD
+
+### Changed
+
+- **BREAKING:** The `ResourceLogController` port's `assertionKeysAt(versionId)`
+  is replaced by `documentAt(versionId)`, which returns the verified controller
+  document at that version. The verifier now dereferences each proof's
+  `verificationMethod` DID URL to the `assertionMethod` member
+  `${did}#${fragment}` of that document and verifies the proof under the key
+  that member publishes (`publicKeyMultibase`). The fragment is an opaque
+  selector, no longer read as the key. The admission hook's `keyMultibase` and
+  `proofKeys` carry the published keys. A URL naming no member, a reference
+  nothing backs, or a member publishing no key refuses as Integrity. Two proofs
+  by one key at different controller versions now refuse as disagreeing versions
+  rather than as a repeated key.
+- The sealing sweep's membership change follows the same key rule:
+  `latestAssertionRemovalIndex` compares each version's set of published
+  `assertionMethod` keys. A member whose key changed under an unchanged id now
+  registers as a removal; dropping a reference nothing backs no longer does.
+- `ResourceLogSigner.keyMultibase` is documented as the signing key's own
+  multibase, which the builders also mint as the verification-method fragment.
+- Controller-document ids are compared in absolute form: a relative DID URL
+  (`#fragment`) resolves against the document's `id` in `relationMembers`, and
+  the new `relationMemberNamed` reader dereferences a `${did}#${fragment}` URL
+  to a relation member. `ControllerDocument` gains an optional `id`.
+- **BREAKING:** `memberKeyMultibase` returns the resolved method's
+  `publicKeyMultibase`, or `undefined` when there is none; an id fragment is
+  never read as a key. `relationKeyMultibases` follows, so a reference nothing
+  backs no longer contributes its fragment.
+- **BREAKING:** `buildVersionedVm` takes `fragment` in place of `keyMultibase`,
+  and `parseVersionedVm` returns `fragment`. The URL the appender writes is
+  unchanged.
+- `fakeController` (`./testing`) accepts per-version `methods`, embedded in
+  `assertionMethod` verbatim, so a consumer can test a document whose member
+  id and published key disagree.
+
 ## 0.6.1 - 2026-10-03
 
 ### Changed

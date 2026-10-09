@@ -18,8 +18,12 @@
  * controller view (the latest version whose `assertionMethod` set lost a
  * member against its predecessor -- only assertion removals affect append
  * authority, so a spent recovery code's `keyAgreement`-only method never
- * registers here), and the log's side is the verified head's effective
- * controller version ({@link VerifiedResourceLog}`.headControllerVersionIndex`).
+ * registers here). Membership is read as the set of published keys, under
+ * the same key rule the verifier applies. A member whose key changed under
+ * an unchanged id is a removal. A reference nothing backs never held
+ * authority, so dropping it is not one. The log's side is the verified
+ * head's effective controller version
+ * ({@link VerifiedResourceLog}`.headControllerVersionIndex`).
  * "Sealed" is simply "head controller version at or past the removal", so
  * the backstop append is idempotent and a
  * torn sweep is finished by a naive re-run by any surviving member (the
@@ -29,14 +33,16 @@
 import type { ResourceLogStore } from './store.js'
 import { appendResourceLog, readResourceLog } from './append.js'
 import type { ResourceLogController } from './controller.js'
+import { relationKeyMultibases } from './document.js'
 import type { ResourceLogSigner } from './entry.js'
 import type { ResourceLogPinStore } from './pin.js'
 import type { VerifiedResourceLog } from './verify.js'
 
 /**
  * The controller's latest membership change: the largest index into
- * `controller.versionIds` whose `assertionMethod` key set LOST a member
- * against its predecessor's, or `0` when no version ever removed one (the
+ * `controller.versionIds` whose set of published `assertionMethod` keys
+ * LOST a member against its predecessor's, or `0` when no version ever
+ * removed one (the
  * genesis version has no predecessor and can never register as a removal, so
  * `0` doubles as "nothing to seal against" -- every controller version
  * satisfies it). An
@@ -56,8 +62,11 @@ export async function latestAssertionRemovalIndex({
   // Each version's key set resolves independently; only the pairwise
   // comparison below is ordered.
   const keySets = await Promise.all(
-    controller.versionIds.map(versionId =>
-      controller.assertionKeysAt(versionId)
+    controller.versionIds.map(async versionId =>
+      relationKeyMultibases({
+        doc: await controller.documentAt(versionId),
+        relation: 'assertionMethod'
+      })
     )
   )
   let removalIndex = 0

@@ -15,6 +15,7 @@
  * non-test globs.
  */
 import type { ResourceLogController } from './controller.js'
+import type { ControllerDocument, VerificationMethodShape } from './document.js'
 import { ResourceLogConflictError } from './errors.js'
 import type { ResourceLogEntry } from '@interop/storage-core'
 import type { ResourceLogStore } from './store.js'
@@ -26,17 +27,23 @@ export const CONTROLLER_DID = 'did:webvh:QmScid:example.com:space:abc:id'
 
 /**
  * A fake `ResourceLogController`: an ordered controller-log version list with
- * per-version `assertionMethod` key-multibase sets. An empty `versions` list
- * models an unversioned static controller; `currentKeys` then supplies the
- * current-document set (for a versioned controller the last version is the
- * current document). Controller-domain admission policy is the caller's:
- * pass `admitAppend` to attach one (a consumer testing its own hook), or a
+ * a synthesized controller document per version. Each version's `keys` are
+ * published as the methods `${did}#${key}` carrying `publicKeyMultibase: key`
+ * (the id this stack mints a method under) and referenced from
+ * `assertionMethod`; its `methods` are embedded in `assertionMethod`
+ * verbatim, for a document whose member id and published key disagree, or
+ * whose member publishes no key. An empty `versions` list models an
+ * unversioned static controller; `currentKeys` then supplies the current
+ * document (for a versioned controller the last version is the current
+ * document). A versionId the list does not carry rejects, as the port
+ * requires. Controller-domain admission policy is the caller's: pass
+ * `admitAppend` to attach one (a consumer testing its own hook), or a
  * wrapper can extend the returned view -- the fixture itself carries none,
  * exactly as the library's port does.
  *
  * @param options {object}
  * @param [options.did] {string}
- * @param options.versions {Array<{ versionId: string, keys: string[] }>}
+ * @param options.versions {Array<{ versionId: string, keys: string[], methods?: VerificationMethodShape[] }>}
  * @param [options.currentKeys] {string[]}   unversioned controllers only
  * @param [options.admitAppend] {function}   the admission hook to attach
  * @returns {ResourceLogController}
@@ -44,32 +51,51 @@ export const CONTROLLER_DID = 'did:webvh:QmScid:example.com:space:abc:id'
 export function fakeController({
   did = CONTROLLER_DID,
   versions,
-  currentKeys,
+  currentKeys = [],
   admitAppend
 }: {
   did?: string
-  versions: Array<{ versionId: string; keys: string[] }>
+  versions: Array<{
+    versionId: string
+    keys: string[]
+    methods?: VerificationMethodShape[]
+  }>
   currentKeys?: string[]
   admitAppend?: ResourceLogController['admitAppend']
 }): ResourceLogController {
-  function versionAt(versionId?: string) {
-    if (versionId === undefined) {
-      return versions[versions.length - 1]
+  function documentOf({
+    keys,
+    methods = []
+  }: {
+    keys: string[]
+    methods?: VerificationMethodShape[]
+  }): ControllerDocument {
+    const verificationMethod = keys.map(key => ({
+      id: `${did}#${key}`,
+      type: 'Multikey',
+      controller: did,
+      publicKeyMultibase: key
+    }))
+    return {
+      verificationMethod,
+      assertionMethod: [
+        ...verificationMethod.map(method => method.id),
+        ...methods
+      ]
     }
-    const version = versions.find(entry => entry.versionId === versionId)
-    if (!version) {
-      throw new Error(`fake controller has no version "${versionId}"`)
-    }
-    return version
   }
   return {
     did,
     versionIds: versions.map(version => version.versionId),
-    async assertionKeysAt(versionId?: string): Promise<Set<string>> {
-      if (versionId === undefined && versions.length === 0) {
-        return new Set(currentKeys ?? [])
+    async documentAt(versionId?: string): Promise<ControllerDocument> {
+      const version =
+        versionId === undefined
+          ? versions[versions.length - 1]
+          : versions.find(entry => entry.versionId === versionId)
+      if (version === undefined && versionId !== undefined) {
+        throw new Error(`fake controller has no version "${versionId}"`)
       }
-      return new Set(versionAt(versionId)?.keys ?? [])
+      return documentOf(version ?? { keys: currentKeys })
     },
     ...(admitAppend === undefined ? {} : { admitAppend })
   }

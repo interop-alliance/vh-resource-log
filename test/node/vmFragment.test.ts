@@ -53,7 +53,7 @@ describe('buildVersionedVm / parseVersionedVm', () => {
     const parsed = {
       did,
       controllerVersionId: '3-zHash',
-      keyMultibase: multibase
+      fragment: multibase
     }
     expect(parseVersionedVm(buildVersionedVm(parsed))).toEqual(parsed)
     expect(buildVersionedVm(parsed)).toBe(
@@ -62,7 +62,7 @@ describe('buildVersionedVm / parseVersionedVm', () => {
   })
 
   it('round-trips an unversioned verification method', () => {
-    const parsed = { did, keyMultibase: multibase }
+    const parsed = { did, fragment: multibase }
     expect(parseVersionedVm(buildVersionedVm(parsed))).toEqual(parsed)
     expect(buildVersionedVm(parsed)).toBe(`${did}#${multibase}`)
   })

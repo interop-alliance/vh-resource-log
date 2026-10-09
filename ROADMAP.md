@@ -48,7 +48,7 @@ propagation) and moving it in closes them.
 
 ## Verifier and append correctness
 
-### VRL-6: Do not classify a throwing `assertionKeysAt` as fabrication
+### VRL-6: Do not classify a throwing `documentAt` as fabrication
 
 - status: todo
 - priority: medium
@@ -59,18 +59,22 @@ propagation) and moving it in closes them.
     9 if a new name or reason is introduced)
   - wallet-core (`isLogRefusal`, `isRosterRefusal`)
 - acceptance:
-  - [ ] A non-kernel throw from the controller port inside `authorize`
-        propagates as itself (or as a separately classified error), not as
+  - [ ] A non-kernel throw from the controller port's `documentAt` propagates as
+        itself (or as a separately classified error), not as
         `ResourceLogIntegrityError`
-  - [ ] Test with a controller whose `assertionKeysAt` rejects
+  - [ ] The test "wraps a rejecting documentAt as the integrity class" in
+        `test/node/resourceLog-verify.test.ts` is rewritten to pin the new
+        classification
 
-`src/verify.ts:535`. The catch around `verifyEntryProofs` wraps every non-hook,
-non-Integrity throw as `ResourceLogIntegrityError`. The only shipped adapter is
-an in-memory view that rejects only with an Integrity-class refusal, which is
-why this is plausible rather than confirmed, but the port is async and a
-resolver or IndexedDB failure in a future adapter would be reported as tampering
-and hard-refused by wallet-core. Any new error name or `reason` value is a
-wire-level decision for the maintainer (see also VRL-13).
+The verifier calls `documentAt` once per entry from the pre-pass in
+`verifyEntryAgainstHead` (`src/verify.ts`, the dereference step), inside the try
+whose catch wraps every non-Integrity throw as `ResourceLogIntegrityError`. The
+only shipped adapter is an in-memory view that rejects only with an
+Integrity-class refusal, which is why this is plausible rather than confirmed,
+but the port is async and a resolver or IndexedDB failure in a future adapter
+would be reported as tampering and hard-refused by wallet-core. Any new error
+name or `reason` value is a wire-level decision for the maintainer (see also
+VRL-13).
 
 ### VRL-7: Validate `versionTime` as RFC3339 UTC
 
@@ -252,7 +256,7 @@ the rollback carve-out twice.
   - [ ] `memoryLogStore` is tested directly against the store port's contract: a
         stale-etag append and a create over an existing log throw the named
         conflict error, and `_withholdEtag` yields an etag-less read
-  - [ ] `fakeController.assertionKeysAt` throws on an unknown versionId
+  - [ ] `fakeController.documentAt` throws on an unknown versionId
         (`src/testing.ts:61`) and resolves `currentKeys` on the unversioned path
   - [ ] The suite is re-run after VRL-11 lands, pinning its new behavior
 

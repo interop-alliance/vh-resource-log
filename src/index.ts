@@ -71,6 +71,7 @@ export {
   memberKeyMultibase,
   relationIds,
   relationKeyMultibases,
+  relationMemberNamed,
   relationMembers,
   resolvedRelationMethods,
   type ControllerDocument,

@@ -84,7 +84,7 @@ export function versionedVm({
     did: controller.did,
     controllerVersionId:
       controller.versionIds[controller.versionIds.length - 1],
-    keyMultibase
+    fragment: keyMultibase
   })
 }
 
@@ -94,30 +94,33 @@ export function versionedVm({
  * entry's own `versionTime` as the proof's `created` time. Multi-proof entries
  * are legal in the profile, and the added proof sits in a later array
  * position -- the placement a per-entry admission hook would never see.
+ * `fragment` (the signer's own key multibase by default) is the seam a test
+ * uses to mint a proof whose fragment is not the signing key, which the
+ * library's builders never do.
  *
  * @param options {object}
  * @param options.entry {ResourceLogEntry}
  * @param options.controller {ResourceLogController}
  * @param options.signer {ResourceLogSigner}
+ * @param [options.fragment] {string}
  * @returns {Promise<ResourceLogEntry>}
  */
 export async function coSignEntry({
   entry,
   controller,
-  signer
+  signer,
+  fragment = signer.keyMultibase
 }: {
   entry: ResourceLogEntry
   controller: ResourceLogController
   signer: ResourceLogSigner
+  fragment?: string
 }): Promise<ResourceLogEntry> {
   const { proof: _omitted, ...unsigned } = entry
   const coSignature = await signDataIntegrityProof(
     unsigned,
     createDataIntegrityProofTemplate({
-      verificationMethod: versionedVm({
-        controller,
-        keyMultibase: signer.keyMultibase
-      }),
+      verificationMethod: versionedVm({ controller, keyMultibase: fragment }),
       created: entry.versionTime
     }),
     signerFromExternalKey({
@@ -129,6 +132,38 @@ export async function coSignEntry({
     ...entry,
     proof: [...entry.proof, coSignature as ResourceLogEntry['proof'][number]]
   }
+}
+
+/**
+ * Re-signs an already-signed entry under another fragment: returns it with
+ * its proof array replaced by one proof by `signer`, minted under `fragment`.
+ * The entry's hash and `versionId` are unaffected, since `proof` is outside
+ * the hash input.
+ *
+ * @param options {object}
+ * @param options.entry {ResourceLogEntry}
+ * @param options.controller {ResourceLogController}
+ * @param options.signer {ResourceLogSigner}
+ * @param options.fragment {string}
+ * @returns {Promise<ResourceLogEntry>}
+ */
+export async function resignEntryUnder({
+  entry,
+  controller,
+  signer,
+  fragment
+}: {
+  entry: ResourceLogEntry
+  controller: ResourceLogController
+  signer: ResourceLogSigner
+  fragment: string
+}): Promise<ResourceLogEntry> {
+  return coSignEntry({
+    entry: { ...entry, proof: [] },
+    controller,
+    signer,
+    fragment
+  })
 }
 
 /**

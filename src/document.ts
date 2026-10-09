@@ -8,15 +8,24 @@
  * relation member names. Both are generic DID-document rules with no profile
  * or wallet semantics, and both used to be re-implemented per consumer, where
  * two readings of one document could disagree on a malformed member. They
- * live here, dependency-free, beside the fragment reader in `vmFragment.ts`
- * for the same reason that reader does: this library is the lowest layer the
+ * live here, dependency-free, beside the DID URL codec in `vmFragment.ts`
+ * for the same reason that codec does: this library is the lowest layer the
  * consuming wallet and storage packages all import.
+ *
+ * The key rule is DID Core's: a member's key is the `publicKeyMultibase` of
+ * the method it resolves to, and the fragment of its id is an opaque
+ * selector that names no key. This stack still mints every method id as
+ * `${did}#${publicKeyMultibase}`, but no reader depends on it.
+ *
+ * Ids are compared in absolute form. A relative DID URL (`#fragment`, DID
+ * Core section 3.2.2) resolves against the document's own `id`, so a
+ * reference, an embedded method, and a `verificationMethod` entry name the
+ * same method whether each is written absolute or relative.
  *
  * Deciding which methods belong to whom (an enrolled client, a standing
  * credential's ladder) is each consumer's own rule over the members these
  * readers return. Nothing here filters.
  */
-import { vmFragmentOf } from './vmFragment.js'
 
 /**
  * The least a verification method carries for these readers: its id, and the
@@ -48,6 +57,7 @@ export type VerificationRelation =
 export interface ControllerDocument<
   M extends VerificationMethodShape = VerificationMethodShape
 > {
+  id?: string
   verificationMethod?: M[]
   authentication?: Array<string | M>
   assertionMethod?: Array<string | M>
@@ -92,12 +102,33 @@ export function relationIds(
 }
 
 /**
+ * A verification-method id in absolute form: a relative DID URL
+ * (`#fragment`) prefixed with the DID it is relative to, any other id
+ * verbatim. With no DID to resolve against, a relative id stays relative and
+ * matches only another relative id.
+ *
+ * @param options {object}
+ * @param options.id {string}
+ * @param [options.did] {string}   the document's own DID
+ * @returns {string}
+ */
+function absoluteMethodId({
+  id,
+  did
+}: {
+  id: string
+  did: string | undefined
+}): string {
+  return id.startsWith('#') && did !== undefined ? `${did}${id}` : id
+}
+
+/**
  * The per-document `verificationMethod` index the relation readers resolve
- * string references through, memoized on the array itself. A verified
- * document is read many times over (a controller adapter resolves several
- * relations per log entry, and every ceremony re-reads the head), and no
- * reader mutates a `verificationMethod` array in place: a rebuilt document
- * carries a fresh array, so it keys a fresh index.
+ * string references through, keyed by absolute id and memoized on the array
+ * itself. A verified document is read many times over (a controller adapter
+ * resolves several relations per log entry, and every ceremony re-reads the
+ * head), and no reader mutates a `verificationMethod` array in place: a
+ * rebuilt document carries a fresh array, so it keys a fresh index.
  *
  * @param doc {ControllerDocument}
  * @returns {Map<string, VerificationMethodShape>}
@@ -115,7 +146,7 @@ function verificationMethodIndex<M extends VerificationMethodShape>(
     byId = new Map()
     for (const method of methods) {
       if (typeof method?.id === 'string') {
-        byId.set(method.id, method)
+        byId.set(absoluteMethodId({ id: method.id, did: doc.id }), method)
       }
     }
     verificationMethodIndexes.set(methods, byId)
@@ -151,12 +182,50 @@ export function relationMembers<M extends VerificationMethodShape>({
   const members: Array<RelationMember<M>> = []
   for (const entry of doc[relation] ?? []) {
     if (typeof entry === 'string') {
-      members.push({ id: entry, method: byId.get(entry) })
+      members.push({
+        id: entry,
+        method: byId.get(absoluteMethodId({ id: entry, did: doc.id }))
+      })
     } else if (entry) {
       members.push({ id: entry.id, method: entry })
     }
   }
   return members
+}
+
+/**
+ * The member of one relation that a DID URL names (the dereference every
+ * proof reader of this stack performs): the member whose id, in absolute
+ * form, is `${did}#${fragment}`. A relative member id resolves against the
+ * document's own `id`, or against `did` when the document carries none.
+ * `undefined` when the relation lists no such member; a member found with no
+ * method is returned as is, so the caller refuses it under the key rule.
+ *
+ * @param options {object}
+ * @param options.doc {ControllerDocument}   a locally verified document
+ * @param options.relation {VerificationRelation}   the relation to read
+ * @param options.did {string}   the DID URL's DID
+ * @param options.fragment {string}   the DID URL's fragment
+ * @returns {RelationMember | undefined}
+ */
+export function relationMemberNamed<M extends VerificationMethodShape>({
+  doc,
+  relation,
+  did,
+  fragment
+}: {
+  doc: ControllerDocument<M>
+  relation: VerificationRelation
+  did: string
+  fragment: string
+}): RelationMember<M> | undefined {
+  const wanted = `${did}#${fragment}`
+  const base = doc.id ?? did
+  return relationMembers({ doc, relation }).find(
+    member =>
+      member.id !== undefined &&
+      absoluteMethodId({ id: member.id, did: base }) === wanted
+  )
 }
 
 /**
@@ -189,35 +258,25 @@ export function resolvedRelationMethods<M extends VerificationMethodShape>({
 
 /**
  * The key multibase one relation member names, under the one rule every
- * reader of this stack applies. Every verification-method id this stack mints
- * is `${did}#${multibase}`, so a member names its key twice: by the fragment
- * of its id, and by the `publicKeyMultibase` of the method it resolves to.
- * When both are present they must agree, and a member whose two readings
- * disagree names no key: the document is malformed there, and a reader that
- * picked one would attribute a key the other reading denies. When only one is
- * present it is the key (a reference nothing backs names its key by fragment
- * alone, an id-less embedded method by its `publicKeyMultibase` alone). A
- * member with neither names no key.
+ * reader of this stack applies: the `publicKeyMultibase` of the method the
+ * member resolves to, and `undefined` when there is none. A reference nothing
+ * backs names no key, a method that publishes no key names none, and the
+ * fragment of the member's id is never read as a key: it is an opaque
+ * selector (DID Core), even though this stack mints it equal to the key.
  *
  * @param member {RelationMember}
  * @returns {string | undefined}
  */
 export function memberKeyMultibase({
-  id,
   method
 }: RelationMember): string | undefined {
-  const fragment = id === undefined ? undefined : vmFragmentOf(id)
-  const published = method?.publicKeyMultibase
-  if (fragment !== undefined && published !== undefined) {
-    return fragment === published ? fragment : undefined
-  }
-  return fragment ?? published
+  return method?.publicKeyMultibase
 }
 
 /**
  * The key multibases one relation publishes, each member read through
- * {@link memberKeyMultibase}. Members naming no key are skipped, so the set
- * holds only keys both readings of the document agree on.
+ * {@link memberKeyMultibase}. Members naming no key (a reference nothing
+ * backs, a method without a key) are skipped.
  *
  * @param options {object}
  * @param options.doc {ControllerDocument}   a locally verified document

@@ -4,30 +4,33 @@
 /**
  * The controller-document view a resource-log verifier authorizes against:
  * the profile's root of authority, resolved and verified by the reader
- * independently of the host serving the log. The interface is the seam --
- * verification consumes only the account DID, the ordered controller-log
- * version list, per-version `assertionMethod` membership, and (optionally)
- * a per-proof admission hook for controller-domain append policy -- and the
- * caller builds it from an already-verified controller document, answering
- * controller-version lookups from that verified history rather than from any
- * wire fetch. Handing the verifier a view instead of a resolver is what
- * enforces the profile's rule that controller-document material never comes
- * from the channel the log came from. The did:webvh adapter over an account
- * log lives in `@interop/wallet-core` (`webvhResourceLogController`), which
- * also supplies the hook.
+ * independently of the host serving the log. The interface is the seam.
+ * Verification consumes only the account DID, the ordered controller-log
+ * version list, the controller document at a version, and an optional
+ * per-proof admission hook for controller-domain append policy. The verifier
+ * reads the document's `assertionMethod` members through the shared readers
+ * in `document.ts`. The caller builds the view from an already-verified
+ * controller document, answering controller-version lookups from that
+ * verified history rather than from any wire fetch. Handing the verifier a
+ * view instead of a resolver is what enforces the profile's rule that
+ * controller-document material never comes from the channel the log came
+ * from. The did:webvh adapter over an account log lives in
+ * `@interop/wallet-core` (`webvhResourceLogController`), which also supplies
+ * the hook.
  */
+import type { ControllerDocument } from './document.js'
 
 /**
  * What log verification consumes of the independently verified controller
  * document: the DID the entry proofs must sign under, the verified controller
- * log's `versionId` list in order (empty for an unversioned static
- * controller, degrading every controller-version rule to current-document
- * verification),
- * the set of `assertionMethod` key multibases at a given version --
- * membership there is the whole authorization rule, so `keyAgreement`-only
- * recovery keys and `authentication`-only convenience keys are excluded
- * structurally -- and the optional {@link ResourceLogController.admitAppend}
- * admission hook.
+ * log's `versionId` list in order, the controller document at a given
+ * version, and the optional {@link ResourceLogController.admitAppend}
+ * admission hook. An empty version list marks an unversioned static
+ * controller and degrades every controller-version rule to current-document
+ * verification. The verifier dereferences each proof's verification method
+ * against the document's `assertionMethod` members, so membership there is
+ * the whole authorization rule. `keyAgreement`-only recovery keys and
+ * `authentication`-only convenience keys are excluded structurally.
  */
 export interface ResourceLogController {
   did: string
@@ -41,14 +44,21 @@ export interface ResourceLogController {
    */
   versionIds: string[]
   /**
-   * Resolves the `assertionMethod` public-key multibases at a controller-log
-   * version (`undefined`: the current document, the unversioned-controller
-   * degradation).
+   * The verified controller document at a controller-log version
+   * (`undefined`: the current document, the unversioned-controller
+   * degradation). The verifier reads its `assertionMethod` relation through
+   * the shared document readers: a proof's verification-method DID URL names
+   * the member `${did}#${fragment}`, and the key the proof is verified under
+   * is that member's resolved `publicKeyMultibase`. The fragment itself is
+   * an opaque selector, as in DID Core, and a relative member id resolves
+   * against the document's `id`. A view answers with the document and
+   * applies no key rule of its own. A version the verified history does not
+   * carry rejects (reported as Integrity, VRL-6).
    *
    * @param [versionId] {string}
-   * @returns {Promise<Set<string>>}
+   * @returns {Promise<ControllerDocument>}
    */
-  assertionKeysAt(versionId?: string): Promise<Set<string>>
+  documentAt(versionId?: string): Promise<ControllerDocument>
   /**
    * The admission hook: controller-domain append policy the generic verifier
    * cannot know, consulted per PROOF (multi-proof entries are legal, so a

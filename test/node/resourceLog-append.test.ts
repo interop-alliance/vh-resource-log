@@ -25,6 +25,7 @@ import {
   isResourceLogConflictError,
   memoryResourceLogPinStore,
   readResourceLog,
+  relationKeyMultibases,
   resourceLogPinId,
   ResourceLogClosedError,
   ResourceLogConflictError,
@@ -233,7 +234,10 @@ describe('createResourceLog', () => {
         {
           versionId: '1-v1',
           keys: [
-            ...(await controller.assertionKeysAt('1-v1')),
+            ...relationKeyMultibases({
+              doc: await controller.documentAt('1-v1'),
+              relation: 'assertionMethod'
+            }),
             bob.signingKeyMultibase
           ]
         }
@@ -768,8 +772,9 @@ describe('appendResourceLog pre-write pass', () => {
       })
     ).rejects.toThrow(
       new ResourceLogIntegrityError(
-        'Resource log entry 2 is signed by a key the controller document ' +
-          'does not list under assertionMethod at the controller version.'
+        'Resource log entry 2 carries a proof whose verification method ' +
+          'the controller document does not list under assertionMethod at ' +
+          'the controller version.'
       )
     )
     expect(store._getEntries()).toEqual(before)
@@ -1049,7 +1054,7 @@ describe('createResourceLog pre-write pass', () => {
       get versionIds(): string[] {
         throw bug
       },
-      assertionKeysAt: controller.assertionKeysAt
+      documentAt: controller.documentAt
     }
     const events: string[] = []
     const pinStore = memoryResourceLogPinStore()
@@ -1095,7 +1100,7 @@ describe('createResourceLog pre-write pass', () => {
         }
         return ['1-v1']
       },
-      assertionKeysAt: controller.assertionKeysAt
+      documentAt: controller.documentAt
     }
     const store = memoryLogStore()
     const pinStore = memoryResourceLogPinStore()

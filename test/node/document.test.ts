@@ -2,16 +2,19 @@
  * Unit tests for the controller-document readers (`src/document.ts`): how a
  * verification relation resolves (references through `verificationMethod`,
  * embedded methods verbatim, order preserved), and the one key-multibase rule
- * a relation member is read under (fragment and `publicKeyMultibase` agree,
- * either alone is the key, a disagreement names no key).
+ * a relation member is read under (the resolved method's
+ * `publicKeyMultibase`; an id fragment names no key, a reference nothing
+ * backs names none).
  */
 import { describe, expect, it } from 'vitest'
 import {
   memberKeyMultibase,
   relationIds,
   relationKeyMultibases,
+  relationMemberNamed,
   relationMembers,
-  resolvedRelationMethods
+  resolvedRelationMethods,
+  type ControllerDocument
 } from '../../src/index.js'
 
 const DID = 'did:webvh:QmScid:storage.example:space:s:id'
@@ -59,6 +62,74 @@ describe('relationMembers', () => {
   it('reads an absent relation as no members', () => {
     expect(relationMembers({ doc: {}, relation: 'authentication' })).toEqual([])
   })
+
+  it('resolves relative references and ids against the document id', () => {
+    const relative = { id: `#${KEY_A}`, publicKeyMultibase: KEY_A }
+    const doc = {
+      id: DID,
+      verificationMethod: [relative, vm(KEY_B)],
+      assertionMethod: [`${DID}#${KEY_A}`, `#${KEY_B}`]
+    }
+    expect(relationMembers({ doc, relation: 'assertionMethod' })).toEqual([
+      { id: `${DID}#${KEY_A}`, method: relative },
+      { id: `#${KEY_B}`, method: vm(KEY_B) }
+    ])
+  })
+
+  it('leaves a relative reference unresolved when the document has no id', () => {
+    const doc = {
+      verificationMethod: [vm(KEY_A)],
+      assertionMethod: [`#${KEY_A}`]
+    }
+    expect(relationMembers({ doc, relation: 'assertionMethod' })).toEqual([
+      { id: `#${KEY_A}`, method: undefined }
+    ])
+  })
+})
+
+describe('relationMemberNamed', () => {
+  it('finds the member the DID URL names, absolute or relative', () => {
+    const relative = { id: `#${KEY_B}`, publicKeyMultibase: KEY_B }
+    const doc = {
+      id: DID,
+      verificationMethod: [vm(KEY_A)],
+      assertionMethod: [`${DID}#${KEY_A}`, relative, `${DID}#${KEY_C}`]
+    }
+    const named = (fragment: string) =>
+      relationMemberNamed({
+        doc,
+        relation: 'assertionMethod',
+        did: DID,
+        fragment
+      })
+    expect(named(KEY_A)).toEqual({ id: `${DID}#${KEY_A}`, method: vm(KEY_A) })
+    expect(named(KEY_B)).toEqual({ id: `#${KEY_B}`, method: relative })
+    expect(named(KEY_C)).toEqual({ id: `${DID}#${KEY_C}`, method: undefined })
+    expect(named('zUnknown')).toBeUndefined()
+  })
+
+  it('resolves a relative id against the URL DID when the document has none, and against the document id otherwise', () => {
+    const member = { id: `#${KEY_A}`, publicKeyMultibase: KEY_A }
+    expect(
+      relationMemberNamed({
+        doc: { assertionMethod: [member] },
+        relation: 'assertionMethod',
+        did: DID,
+        fragment: KEY_A
+      })
+    ).toEqual({ id: `#${KEY_A}`, method: member })
+    expect(
+      relationMemberNamed({
+        doc: {
+          id: 'did:webvh:QmOther:example.com:x',
+          assertionMethod: [member]
+        },
+        relation: 'assertionMethod',
+        did: DID,
+        fragment: KEY_A
+      })
+    ).toBeUndefined()
+  })
 })
 
 describe('resolvedRelationMethods', () => {
@@ -88,61 +159,56 @@ describe('resolvedRelationMethods', () => {
 })
 
 describe('memberKeyMultibase', () => {
-  it('reads an agreeing fragment and publicKeyMultibase as the key', () => {
+  it("reads the resolved method's publicKeyMultibase as the key", () => {
     expect(
       memberKeyMultibase({ id: `${DID}#${KEY_A}`, method: vm(KEY_A) })
     ).toBe(KEY_A)
-  })
-
-  it('reads a fragment alone as the key', () => {
-    expect(
-      memberKeyMultibase({ id: `${DID}#${KEY_A}`, method: undefined })
-    ).toBe(KEY_A)
-    expect(
-      memberKeyMultibase({
-        id: `${DID}#${KEY_A}`,
-        method: { id: `${DID}#${KEY_A}` }
-      })
-    ).toBe(KEY_A)
-  })
-
-  it('reads a publicKeyMultibase alone as the key', () => {
     expect(
       memberKeyMultibase({
         id: undefined,
         method: { publicKeyMultibase: KEY_A }
       })
     ).toBe(KEY_A)
-    expect(
-      memberKeyMultibase({ id: DID, method: { publicKeyMultibase: KEY_A } })
-    ).toBe(KEY_A)
   })
 
-  it('names no key when the two readings disagree', () => {
+  it('reads the published key when the id fragment names another', () => {
     expect(
       memberKeyMultibase({ id: `${DID}#${KEY_A}`, method: vm(KEY_B) })
+    ).toBe(KEY_B)
+  })
+
+  it('never reads an id fragment as the key', () => {
+    expect(
+      memberKeyMultibase({ id: `${DID}#${KEY_A}`, method: undefined })
+    ).toBeUndefined()
+    expect(
+      memberKeyMultibase({
+        id: `${DID}#${KEY_A}`,
+        method: { id: `${DID}#${KEY_A}` }
+      })
     ).toBeUndefined()
   })
 
-  it('names no key when neither reading is present', () => {
+  it('names no key when the method publishes none', () => {
     expect(memberKeyMultibase({ id: DID, method: undefined })).toBeUndefined()
     expect(memberKeyMultibase({ id: undefined, method: {} })).toBeUndefined()
   })
 })
 
 describe('relationKeyMultibases', () => {
-  it('collects the keys of agreeing, fragment-only, and multibase-only members and skips a mismatch', () => {
-    const doc = {
+  it('collects the published keys and omits a reference nothing backs', () => {
+    const doc: ControllerDocument = {
       verificationMethod: [vm(KEY_A), { ...vm(KEY_B), id: `${DID}#${KEY_C}` }],
       capabilityInvocation: [
         `${DID}#${KEY_A}`,
         `${DID}#${KEY_C}`,
         { publicKeyMultibase: KEY_B },
-        `${DID}#z6MkUnbacked`
+        `${DID}#z6MkUnbacked`,
+        { id: `${DID}#z6MkKeyless` }
       ]
     }
     expect(
       relationKeyMultibases({ doc, relation: 'capabilityInvocation' })
-    ).toEqual(new Set([KEY_A, KEY_B, 'z6MkUnbacked']))
+    ).toEqual(new Set([KEY_A, KEY_B]))
   })
 })
