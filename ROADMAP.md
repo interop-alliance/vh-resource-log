@@ -267,20 +267,6 @@ merging this item into VRL-11 at implementation time is fine.
 
 ## Cleanup
 
-### VRL-22: Use the kernel's `versionId` parse in `confirmAppend` and `entry.ts`
-
-- status: todo
-- priority: low
-- labels: cleanup, robustness
-- verdict: confirmed (entry.ts), plausible (store.ts)
-- acceptance:
-  - [ ] `entry.ts:220-222` uses the `versionNumber` returned by
-        `parseAndValidateVersionId` instead of a second `Number.parseInt`
-  - [ ] `store.ts:98` (`confirmAppend`, public API) derives the ordinal the same
-        way rather than with a looser `parseInt`
-
-Both downstream checks are fail-closed today, so this is consistency, not a bug.
-
 ### VRL-23: Replace the direct `json-canonicalize` import with the kernel's canonicalizer
 
 - status: todo

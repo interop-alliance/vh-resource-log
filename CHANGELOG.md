@@ -7,7 +7,12 @@
 - Internal cleanup: the verifier's pin-continuity check refuses a pinned head
   that carries no ordinal from the same `fork` throw as a head that is not at
   its ordinal; the verdict and attached evidence are unchanged for every input.
-  The unused `src/declarations.d.ts` is removed.
+  The unused `src/declarations.d.ts` is removed. `versionIdOrdinal` (shared by
+  the entry builder, `confirmAppend`, and the pin-continuity check) now
+  validates the whole `versionId` through the kernel's
+  `parseAndValidateVersionId` instead of a loose `parseInt` of its prefix, so a
+  `versionId` with no `-` separator, an empty hash, or a non-numeric prefix
+  reads as carrying no ordinal.
 
 ## 0.7.0 - 2026-10-09
 

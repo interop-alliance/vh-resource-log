@@ -501,3 +501,25 @@ The file holds only a commented-out `declare module 'jsonld'`; nothing imports
 `jsonld`.
 
 Landed 2026-10-10 in vh-resource-log 0.7.1.
+
+### VRL-22: Use the kernel's `versionId` parse in `confirmAppend` and `entry.ts`
+
+- status: done (2026-10-10)
+- priority: low
+- labels: cleanup, robustness
+- verdict: confirmed (entry.ts), plausible (store.ts)
+- acceptance:
+  - [x] `entry.ts:220-222` uses the `versionNumber` returned by
+        `parseAndValidateVersionId` instead of a second `Number.parseInt`
+  - [x] `store.ts:98` (`confirmAppend`, public API) derives the ordinal the same
+        way rather than with a looser `parseInt`
+
+Both downstream checks are fail-closed today, so this is consistency, not a bug.
+
+Landed 2026-10-10 in vh-resource-log 0.7.1. By then both call sites already
+shared `versionIdOrdinal`, so the change went there: it reads the candidate
+ordinal off the `<ordinal>-` prefix and hands the whole string to the kernel's
+`parseAndValidateVersionId`, returning `undefined` when the kernel refuses it.
+The entry builder's separate kernel call on the head is gone (the shared reader
+now covers it), and the `versionIdOrdinal` table test gains the no-separator,
+empty-hash, non-numeric-prefix, and two-separator rows.

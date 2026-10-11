@@ -21,10 +21,15 @@ const METHOD = 'resource-log:0.1'
 describe('versionIdOrdinal', () => {
   it.each([
     ['3-hash', 3],
+    ['007-hash', 7],
     ['0-x', undefined],
     ['-1-x', undefined],
     ['abc', undefined],
-    ['', undefined]
+    ['', undefined],
+    ['3', undefined],
+    ['3-', undefined],
+    ['3x-hash', undefined],
+    ['3-ha-sh', undefined]
   ])('reads %j as %j', (versionId, expected) => {
     expect(versionIdOrdinal(versionId)).toBe(expected)
   })

@@ -69,17 +69,30 @@ function versionedVerificationMethod({
 
 /**
  * The 1-based ordinal a `versionId` (or a pinned head) starts with, or
- * `undefined` when the string does not begin with a positive integer. The
- * one ordinal reader shared by the entry builder, the append confirmation,
- * and the pin-continuity check; full `versionId` validation stays with the
- * kernel's `parseAndValidateVersionId`.
+ * `undefined` when the string is not a well-formed `<ordinal>-<entryHash>`
+ * with a positive ordinal. The one ordinal reader shared by the entry
+ * builder, the append confirmation, and the pin-continuity check. The
+ * kernel's `parseAndValidateVersionId` only checks a `versionId` against an
+ * ordinal it is handed, so the candidate ordinal is read off the prefix
+ * first and the kernel then validates the whole string against it.
  *
  * @param versionId {string}
  * @returns {number | undefined}
  */
 export function versionIdOrdinal(versionId: string): number | undefined {
-  const ordinal = Number.parseInt(versionId, 10)
-  return Number.isInteger(ordinal) && ordinal >= 1 ? ordinal : undefined
+  const prefix = /^(\d+)-/.exec(versionId)?.[1]
+  if (prefix === undefined) {
+    return undefined
+  }
+  const ordinal = Number(prefix)
+  if (ordinal < 1) {
+    return undefined
+  }
+  try {
+    return parseAndValidateVersionId(versionId, ordinal).versionNumber
+  } catch {
+    return undefined
+  }
 }
 
 /**
@@ -280,7 +293,6 @@ export async function buildResourceLogEntry({
     )
   }
   const ordinal = headOrdinal + 1
-  parseAndValidateVersionId(head.versionId, headOrdinal)
   const entryHash = await deriveHash({
     versionId: head.versionId,
     versionTime: time,
