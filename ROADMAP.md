@@ -267,21 +267,6 @@ merging this item into VRL-11 at implementation time is fine.
 
 ## Cleanup
 
-### VRL-23: Replace the direct `json-canonicalize` import with the kernel's canonicalizer
-
-- status: todo
-- priority: low
-- labels: cleanup, dependencies
-- verdict: confirmed
-- touches:
-  - vh-resource-log `src/store.ts`, `package.json`, ARCHITECTURE.md (layer map
-    line 44 lists `json-canonicalize` as a direct dependency)
-- acceptance:
-  - [ ] `confirmAppend` uses `canonicalizeStrict` from
-        `@interop/did-method-webvh`; output is byte-identical for JSON-parsed
-        and literal-built entries
-  - [ ] `json-canonicalize` dropped from direct dependencies
-
 ### VRL-24: Thread the first read into `appendResourceLog` from `sealResourceLog`
 
 - status: todo

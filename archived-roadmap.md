@@ -523,3 +523,25 @@ ordinal off the `<ordinal>-` prefix and hands the whole string to the kernel's
 The entry builder's separate kernel call on the head is gone (the shared reader
 now covers it), and the `versionIdOrdinal` table test gains the no-separator,
 empty-hash, non-numeric-prefix, and two-separator rows.
+
+### VRL-23: Replace the direct `json-canonicalize` import with the kernel's canonicalizer
+
+- status: done (2026-10-11)
+- priority: low
+- labels: cleanup, dependencies
+- verdict: confirmed
+- touches:
+  - vh-resource-log `src/store.ts`, `package.json`, ARCHITECTURE.md (layer map
+    line 44 lists `json-canonicalize` as a direct dependency)
+- acceptance:
+  - [x] `confirmAppend` uses `canonicalizeStrict` from
+        `@interop/did-method-webvh`; output is byte-identical for JSON-parsed
+        and literal-built entries
+  - [x] `json-canonicalize` dropped from direct dependencies
+
+The code half shipped 2026-08-22 in vh-resource-log 0.4.1 (`confirmAppend`
+compares served and sent entries with the kernel's `canonicalizeStrict`, and
+`json-canonicalize` left the direct dependencies in the same change); the
+roadmap item was not archived then. Closed 2026-10-11 by pinning the acceptance
+with a `confirmAppend` test that confirms a literal-built entry against its
+JSON-parsed, member-reordered served copy.

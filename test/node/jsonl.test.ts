@@ -90,6 +90,26 @@ describe('confirmAppend', () => {
     expect(confirmed.entries).toHaveLength(2)
   })
 
+  it('accepts a JSON-parsed served entry against the literal-built one, whatever the key order', async () => {
+    const store = memoryLogStore()
+    const sent = entryAt(2)
+    // The host serves the log it stored; the client parses it back and must
+    // find the entry it built in memory, with member order being irrelevant.
+    const reordered = {
+      proof: sent.proof,
+      state: { value: 2, type: 'TestState' },
+      parameters: sent.parameters,
+      versionTime: sent.versionTime,
+      versionId: sent.versionId
+    }
+    const served = parseResourceLog(
+      JSON.stringify(entryAt(1)) + '\n' + JSON.stringify(reordered) + '\n'
+    )
+    store._setEntries(served)
+    const confirmed = await confirmAppend({ store, entry: sent })
+    expect(confirmed.entries[1]).toEqual(sent)
+  })
+
   it('throws LogNotConfirmedError when the served log is too short', async () => {
     const store = memoryLogStore()
     store._setEntries([entryAt(1)])
