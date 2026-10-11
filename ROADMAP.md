@@ -108,30 +108,6 @@ value resolves to a wrong instant instead of being refused. Only
 skipped. The spec says `parameters` is a JSON object. Genesis is safe because
 the `method` check catches it.
 
-### VRL-9: Make the `sealed` report independent of the `verified` hint
-
-- status: todo
-- priority: medium
-- labels: seal, reporting
-- verdict: confirmed
-- touches:
-  - vh-resource-log `src/seal.ts`, ARCHITECTURE.md (invariant 10 prose)
-  - wallet-core `rosterLogStore.seal()` (maps the flag to `'sealed' | 'noop'`)
-- acceptance:
-  - [ ] `sealResourceLog` reports `sealed: true` only when this call wrote the
-        sealing entry; an already-sealed log read fresh or via a stale hint
-        reports the same result
-  - [ ] The two "nothing to seal against" returns agree on `verified`
-  - [ ] Tests land in this repo (see VRL-10)
-
-`src/seal.ts:167`. With a stale hint whose
-`headControllerVersionIndex < removalIndex`, `appendResourceLog`'s fresh read
-finds the log already sealed, `buildState` returns `null`, nothing is written,
-and the call still returns `{ sealed: true }`; the same state read without a
-hint returns `sealed: false` at line 149. Lines 124-125 also return
-`verified: null` when a hint was supplied, unlike line 129. wallet-core surfaces
-the flag as a ceremony outcome.
-
 ### VRL-11: Make `memoryLogStore` faithful to the store port
 
 - status: todo

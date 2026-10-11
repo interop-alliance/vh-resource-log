@@ -118,10 +118,14 @@ function isSealed({
  * untouched. A closed log that needs sealing propagates the append path's
  * `ResourceLogClosedError`.
  *
- * `sealed` reports whether this call found the log unsealed (and it now is,
- * by this call's append or a concurrent writer's -- the rebase hook converges
- * rather than duplicating); `verified` is the log as last verified, `null`
- * when it was never read (absent, or nothing to seal against).
+ * `sealed` reports whether THIS call wrote the sealing append. It is `false`
+ * whenever nothing was written, including the run that found the log already
+ * sealed through a stale `verified` hint and converged on the append path's
+ * own read (the rebase hook returns `null` rather than duplicating), so the
+ * same log state reports the same result with or without a hint. `verified`
+ * is the log as last verified: the supplied hint when nothing was read, the
+ * read or read-back view otherwise, and `null` when neither exists (an absent
+ * log, or no hint and nothing to seal against).
  *
  * @param options {object}
  * @param options.store {ResourceLogStore}   the log's transport seam
@@ -165,7 +169,7 @@ export async function sealResourceLog({
   verified?: VerifiedResourceLog
 }): Promise<{ sealed: boolean; verified: VerifiedResourceLog | null }> {
   if (controller.versionIds.length === 0) {
-    return { sealed: false, verified: null }
+    return { sealed: false, verified: knownVerified ?? null }
   }
   const removalIndex = await latestAssertionRemovalIndex({ controller })
   if (removalIndex === 0) {
@@ -188,6 +192,10 @@ export async function sealResourceLog({
   if (isSealed({ ...verified, removalIndex })) {
     return { sealed: false, verified }
   }
+  // Whether the attempt that returned wrote the entry. The hook runs once per
+  // CAS attempt, so the last assignment describes the view the append path
+  // settled on, not the hint that routed this call here.
+  let sealed = false
   const confirmed = await appendResourceLog({
     store,
     controller,
@@ -198,9 +206,11 @@ export async function sealResourceLog({
     // The rebase hook doubles as the convergence check: a concurrent writer
     // whose entry already carries a controller version past the removal
     // sealed the log for us.
-    buildState: rebased =>
-      isSealed({ ...rebased, removalIndex }) ? null : rebased.head.state,
+    buildState: rebased => {
+      sealed = !isSealed({ ...rebased, removalIndex })
+      return sealed ? rebased.head.state : null
+    },
     ...(versionTime === undefined ? {} : { versionTime })
   })
-  return { sealed: true, verified: confirmed }
+  return { sealed, verified: confirmed }
 }

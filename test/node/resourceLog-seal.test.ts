@@ -6,7 +6,9 @@
  * growth-only history -- the recovery-spend shape -- and an unversioned
  * controller), plus the supplied-`verified` fast path a caller that just
  * verified the log takes (no read of its own, and a stale view converging
- * through the append path rather than duplicating an entry).
+ * through the append path rather than duplicating an entry). `sealed` is
+ * asserted as "this call wrote the sealing append": a converged run reports
+ * `false` however it got there.
  */
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -245,6 +247,37 @@ describe('sealResourceLog', () => {
     expect(result).toEqual({ sealed: false, verified: null })
   })
 
+  it('hands a supplied verified view back on an unversioned controller, matching the no-removal return', async () => {
+    const alice = await makeLogClient()
+    const unversioned = fakeController({
+      versions: [],
+      currentKeys: [alice.signingKeyMultibase]
+    })
+    const { store, pinStore } = await makeLog({
+      controller: unversioned,
+      signer: alice.logSigner
+    })
+    const read = await readResourceLog({
+      store,
+      controller: unversioned,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID
+    })
+
+    const result = await sealResourceLog({
+      store,
+      controller: unversioned,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      verified: read!.verified
+    })
+    expect(result).toEqual({ sealed: false, verified: read!.verified })
+    expect(result.verified).toBe(read!.verified)
+  })
+
   it('no-ops on an absent log (nothing exists to seal)', async () => {
     const { alice, postEdit } = await makeAccount()
     const result = await sealResourceLog({
@@ -332,12 +365,67 @@ describe('sealResourceLog', () => {
       signer: alice.logSigner,
       verified: stale!.verified
     })
-    // The supplied view -- not a fresh read -- is what routed this call to
-    // the append path, so it reports having found the log unsealed.
-    expect(result.sealed).toBe(true)
+    // Nothing was written, so the report matches a fresh read of the same
+    // log: the hint that routed this call to the append path does not count.
+    expect(result.sealed).toBe(false)
     expect(store._getEntries()!).toHaveLength(2)
     expect(result.verified!.headControllerVersionIndex).toBe(1)
     expect(result.verified).not.toBe(stale!.verified)
+
+    const fresh = await sealResourceLog({
+      store,
+      controller: postEdit,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner
+    })
+    expect(fresh.sealed).toBe(false)
+    expect(fresh.verified!.headControllerVersionIndex).toBe(1)
+  })
+
+  it('reports sealed: false when a concurrent writer seals between the read and the CAS', async () => {
+    const { alice, preEdit, postEdit } = await makeAccount()
+    const { store, pinStore } = await makeLog({
+      controller: preEdit,
+      signer: alice.logSigner
+    })
+    // The first CAS loses to a concurrent sweep on the same backend; the
+    // retry's re-read finds the log sealed and the rebase hook returns null.
+    let raced = false
+    const racing = {
+      ...store,
+      async append(
+        entry: Parameters<typeof store.append>[0],
+        options: Parameters<typeof store.append>[1]
+      ) {
+        if (!raced) {
+          raced = true
+          await sealResourceLog({
+            store,
+            controller: postEdit,
+            expectedMethod: METHOD,
+            pinStore: memoryResourceLogPinStore(),
+            logId: LOG_ID,
+            signer: alice.logSigner
+          })
+        }
+        return store.append(entry, options)
+      }
+    }
+
+    const result = await sealResourceLog({
+      store: racing,
+      controller: postEdit,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner
+    })
+    expect(raced).toBe(true)
+    expect(result.sealed).toBe(false)
+    expect(store._getEntries()!).toHaveLength(2)
+    expect(result.verified!.headControllerVersionIndex).toBe(1)
   })
 
   it('returns a supplied verified view untouched when the controller never removed a member', async () => {

@@ -163,8 +163,11 @@ depend on this library; nothing here depends on them.
     log's head still at a controller version from before the removal. A sweep
     that would write is refused pre-write when the sweeping client is the
     removed member (invariant 11); the convergence branch, which writes nothing,
-    still runs before the pass. The wallet-side ceremonies that drive it stay in
-    `@interop/wallet-core`.
+    still runs before the pass. The sweep's `sealed` report means "this call
+    wrote the sealing append", decided by the view the append path settled on
+    rather than by any `verified` hint the caller supplied, so the same log
+    state reports the same result whether the hint was fresh, stale, or absent.
+    The wallet-side ceremonies that drive it stay in `@interop/wallet-core`.
 11. **The write path refuses before the host does.** Before `store.append` or
     `store.create`, the candidate entry is verified as the reader would verify
     it at its ordinal (shape, hash chain to the head, proofs, the authorization

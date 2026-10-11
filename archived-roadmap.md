@@ -545,3 +545,32 @@ compares served and sent entries with the kernel's `canonicalizeStrict`, and
 roadmap item was not archived then. Closed 2026-10-11 by pinning the acceptance
 with a `confirmAppend` test that confirms a literal-built entry against its
 JSON-parsed, member-reordered served copy.
+
+### VRL-9: Make the `sealed` report independent of the `verified` hint
+
+- status: done (2026-10-11)
+- priority: medium
+- labels: seal, reporting
+- verdict: confirmed
+- touches:
+  - vh-resource-log `src/seal.ts`, ARCHITECTURE.md (invariant 10 prose)
+  - was-client `logGovernedDescriptorStore.seal()` (maps the flag to
+    `'sealed' | 'noop'`; wallet-core's `rosterLogStore` wraps it)
+- acceptance:
+  - [x] `sealResourceLog` reports `sealed: true` only when this call wrote the
+        sealing entry; an already-sealed log read fresh or via a stale hint
+        reports the same result
+  - [x] The two "nothing to seal against" returns agree on `verified`
+  - [x] Tests land in this repo (see VRL-10)
+
+`src/seal.ts:167`. With a stale hint whose
+`headControllerVersionIndex < removalIndex`, `appendResourceLog`'s fresh read
+finds the log already sealed, `buildState` returns `null`, nothing is written,
+and the call still returns `{ sealed: true }`; the same state read without a
+hint returns `sealed: false` at line 149. Lines 124-125 also return
+`verified: null` when a hint was supplied, unlike line 129. wallet-core surfaces
+the flag as a ceremony outcome.
+
+Landed 2026-10-11: vh-resource-log 0.7.1. `sealed` is set from the rebase hook's
+last run, so a converged append reports `false`; both early returns hand back
+the supplied hint. No consumer change was needed.

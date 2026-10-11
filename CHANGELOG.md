@@ -2,6 +2,15 @@
 
 ## 0.7.1 - TBD
 
+### Fixed
+
+- `sealResourceLog` reports `sealed: true` only when the call itself wrote the
+  sealing append. A stale `verified` hint that routed the sweep to the append
+  path, whose own read then found the log already sealed, reported
+  `sealed: true` while writing nothing; it now reports `sealed: false`, the same
+  as a fresh read of that log. The unversioned-controller return now hands a
+  supplied `verified` hint back, as the no-removal return already did.
+
 ### Changed
 
 - Internal cleanup: the verifier's pin-continuity check refuses a pinned head
