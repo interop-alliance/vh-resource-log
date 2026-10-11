@@ -595,3 +595,26 @@ Landed 2026-10-11: vh-resource-log 0.8.0, as the optional `current` option
 against `maxAttempts`. `sealResourceLog`'s hint widened to the same type, so a
 hint that carries a validator seeds the append path too; a hint from a confirmed
 append carries none and that route still reads.
+
+### VRL-25: `substituteScid` re-derives the kernel's `replaceValueInObject`
+
+- status: done (2026-10-11)
+- priority: low
+- labels: cleanup, kernel-boundary
+- verdict: plausible
+
+`src/verify.ts:253-268` is a hand-rolled inverse of the kernel's
+`replaceValueInObject`, which ARCHITECTURE.md's ownership heuristic says not to
+re-derive here. The helper is not in the kernel's export map, and the two differ
+in semantics (whole-string equality here, `replaceAll` substring there), so a
+swap changes behavior. Draft: either export a whole-value variant from
+`@interop/did-method-webvh` (in-house change) and import it, or record in
+ARCHITECTURE.md why this one is local. Note also that
+`verifyResourceLogHandover` has no call site in any consumer today; keep it
+(decision 0001 moved it in deliberately) but say so in ARCHITECTURE.md.
+
+Landed 2026-10-11: `@interop/did-method-webvh` 5.14.0 exports
+`replaceValueInObject`; the genesis builder and `verifyResourceLog` both use it
+and the local helper is gone. ARCHITECTURE.md's SCID entry records the
+substitution rule and its Handover entry the verifier's lack of a consumer call
+site.

@@ -29,6 +29,7 @@ import {
   defaultWebvhLogVerifier,
   deriveHash,
   parseAndValidateVersionId,
+  replaceValueInObject,
   SCID_PLACEHOLDER,
   verifyEntryProofs
 } from '@interop/did-method-webvh'
@@ -195,6 +196,7 @@ function checkEntryShape(entry: ResourceLogEntry, index: number): void {
       !allowed ||
       typeof genesis.method !== 'string' ||
       typeof genesis.scid !== 'string' ||
+      genesis.scid.length === 0 ||
       (genesis.previousLog !== undefined &&
         (genesis.previousLog === null ||
           typeof genesis.previousLog !== 'object' ||
@@ -203,8 +205,9 @@ function checkEntryShape(entry: ResourceLogEntry, index: number): void {
           Object.keys(genesis.previousLog).length !== 2))
     ) {
       throw new ResourceLogIntegrityError(
-        'The resource log genesis parameters must carry method and scid ' +
-          '(plus, on a handover successor only, previousLog) and nothing else.'
+        'The resource log genesis parameters must carry method and a ' +
+          'non-empty scid (plus, on a handover successor only, previousLog) ' +
+          'and nothing else.'
       )
     }
   } else if (parameterMembers.length !== 0) {
@@ -251,32 +254,6 @@ function checkEntryShape(entry: ResourceLogEntry, index: number): void {
   for (const proof of entry.proof) {
     checkProofShape(proof, ordinal)
   }
-}
-
-/**
- * Deep-clones a JSON value, replacing every string equal to the SCID with the
- * `{SCID}` placeholder -- the inverse of genesis construction, used to
- * recompute the SCID from a served genesis entry.
- *
- * @param value {unknown}
- * @param scid {string}
- * @returns {unknown}
- */
-function substituteScid(value: unknown, scid: string): unknown {
-  if (typeof value === 'string') {
-    return value === scid ? SCID_PLACEHOLDER : value
-  }
-  if (Array.isArray(value)) {
-    return value.map(item => substituteScid(item, scid))
-  }
-  if (value !== null && typeof value === 'object') {
-    const result: Record<string, unknown> = {}
-    for (const [key, member] of Object.entries(value)) {
-      result[key] = substituteScid(member, scid)
-    }
-    return result
-  }
-  return value
 }
 
 /**
@@ -685,9 +662,13 @@ export async function verifyResourceLog({
         `"${expectedMethod}".`
     )
   }
-  const preliminary = substituteScid(
+  // The inverse of genesis construction: every occurrence of the SCID in
+  // every string of the hash input (the kernel's substitution, so a SCID
+  // embedded in a longer value substitutes the same way it was placed).
+  const preliminary = replaceValueInObject(
     hashInputOf(entries[0]!, SCID_PLACEHOLDER),
-    scid
+    scid,
+    SCID_PLACEHOLDER
   )
   if ((await deriveHash(preliminary)) !== scid) {
     throw new ResourceLogIntegrityError(

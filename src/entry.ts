@@ -16,6 +16,7 @@ import {
   createDataIntegrityProofTemplate,
   deriveHash,
   parseAndValidateVersionId,
+  replaceValueInObject,
   SCID_PLACEHOLDER,
   signDataIntegrityProof,
   signerFromExternalKey
@@ -187,13 +188,15 @@ async function signEntry({
 /**
  * Builds and signs a genesis entry by the profile's two-pass SCID procedure:
  * the preliminary entry carries the `{SCID}` placeholder as `versionId` and
- * `parameters.scid`, its hash is the SCID, and the final entry substitutes it
- * back in before the ordinary entry hash is computed (`versionId` input
- * value: the SCID).
+ * `parameters.scid` (and wherever the caller's state embeds it), its hash is
+ * the SCID, and the final entry replaces every placeholder with the SCID
+ * before the ordinary entry hash is computed (`versionId` input value: the
+ * SCID).
  *
  * @param options {object}
  * @param options.state {ResourceLogEntry['state']}   the full initial state
- *   (with its `type`)
+ *   (with its `type`); any `{SCID}` placeholder inside its strings is
+ *   replaced by the SCID
  * @param options.method {string}   the format identifier
  *   (`RESOURCE_LOG_METHOD`)
  * @param options.controller {ResourceLogController}   the verified controller
@@ -221,30 +224,24 @@ export async function buildResourceLogGenesis({
 }): Promise<ResourceLogEntry> {
   checkState(state)
   const time = versionTime ?? new Date().toISOString()
-  const parametersOf = (scid: string) => ({
-    method,
-    scid,
-    ...(previousLog === undefined ? {} : { previousLog })
-  })
-  const scid = await deriveHash({
-    versionId: SCID_PLACEHOLDER,
+  const body = {
     versionTime: time,
-    parameters: parametersOf(SCID_PLACEHOLDER),
+    parameters: {
+      method,
+      scid: SCID_PLACEHOLDER,
+      ...(previousLog === undefined ? {} : { previousLog })
+    },
     state
-  })
-  const parameters = parametersOf(scid)
-  const entryHash = await deriveHash({
-    versionId: scid,
-    versionTime: time,
-    parameters,
-    state
-  })
+  }
+  const scid = await deriveHash({ versionId: SCID_PLACEHOLDER, ...body })
+  // Pass two: every `{SCID}` placeholder in the entry body becomes the SCID
+  // (the kernel's substitution, which the verifier inverts).
+  const placed = replaceValueInObject(body, SCID_PLACEHOLDER, scid)
+  const entryHash = await deriveHash({ versionId: scid, ...placed })
   return signEntry({
     entry: {
       versionId: buildVersionId(1, entryHash),
-      versionTime: time,
-      parameters,
-      state
+      ...placed
     },
     signer,
     verificationMethod: versionedVerificationMethod({

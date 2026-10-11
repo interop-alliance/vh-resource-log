@@ -13,6 +13,13 @@
 
 ### Fixed
 
+- `buildResourceLogGenesis` replaces every `{SCID}` placeholder in the state,
+  and `verifyResourceLog` inverts the SCID with the kernel's
+  `replaceValueInObject` (substring rule), so a genesis whose state embeds the
+  SCID in a longer string now builds and verifies. Requires
+  `@interop/did-method-webvh` `^5.14.0`.
+- `verifyResourceLog` refuses a genesis with an empty `parameters.scid` as
+  malformed instead of reporting a SCID mismatch.
 - `sealResourceLog` reports `sealed: true` only when the call itself wrote the
   sealing append. A stale `verified` hint that routed the sweep to the append
   path, whose own read then found the log already sealed, reported

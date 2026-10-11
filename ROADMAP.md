@@ -241,25 +241,6 @@ but today they are exercised only incidentally through the append and verify
 suites. Pairs with VRL-11 (its fidelity changes should land with these tests);
 merging this item into VRL-11 at implementation time is fine.
 
-## Cleanup
-
-### VRL-25: `substituteScid` re-derives the kernel's `replaceValueInObject`
-
-- status: draft
-- priority: low
-- labels: cleanup, kernel-boundary
-- verdict: plausible
-
-`src/verify.ts:253-268` is a hand-rolled inverse of the kernel's
-`replaceValueInObject`, which ARCHITECTURE.md's ownership heuristic says not to
-re-derive here. The helper is not in the kernel's export map, and the two differ
-in semantics (whole-string equality here, `replaceAll` substring there), so a
-swap changes behavior. Draft: either export a whole-value variant from
-`@interop/did-method-webvh` (in-house change) and import it, or record in
-ARCHITECTURE.md why this one is local. Note also that
-`verifyResourceLogHandover` has no call site in any consumer today; keep it
-(decision 0001 moved it in deliberately) but say so in ARCHITECTURE.md.
-
 ## Conventions
 
 ### VRL-26: Comment wording that the house style forbids

@@ -261,7 +261,11 @@ ARCHITECTURE.md Glossary section.
   Avoid: index, sequence number, line number.
 - **SCID** -- the log's self-certifying identifier, computed by the did:webvh
   kernel over the genesis entry and recorded in the chain-head pin. The
-  construction is `@interop/did-method-webvh`'s and is not re-derived here.
+  construction is `@interop/did-method-webvh`'s and is not re-derived here. Both
+  passes use the kernel's `replaceValueInObject`. The builder replaces every
+  `{SCID}` placeholder in the preliminary entry, state included, and the
+  verifier substitutes the SCID back in every string of the genesis hash input.
+  That is the same substring rule the did:webvh resolver recomputes with.
 - **Format identifier** -- the `parameters.method` string of the genesis entry
   (`resource-log:0.1`, `RESOURCE_LOG_METHOD` in `@interop/storage-core`). A
   reader passes the one it expects as `expectedMethod`. Avoid: profile version,
@@ -284,8 +288,10 @@ ARCHITECTURE.md Glossary section.
 - **Handover** -- the move of a resource's history to a successor log: the
   closed log's terminal entry names the successor, and the successor's genesis
   names the closed log in `previousLog`. The one transition across which a pin's
-  SCID or method may change (`verifyResourceLogHandover`). Avoid: migration,
-  rotation.
+  SCID or method may change (`verifyResourceLogHandover`). No consumer calls
+  `verifyResourceLogHandover` yet; it stays here because decision 0001 placed
+  the handover link check beside the verifier it belongs to, and nothing in
+  `src/` emits terminal entries. Avoid: migration, rotation.
 
 ### Authority
 

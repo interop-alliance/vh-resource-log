@@ -14,7 +14,11 @@
  * verify from both sides.
  */
 import { describe, expect, it } from 'vitest'
-import { buildVersionId, deriveHash } from '@interop/did-method-webvh'
+import {
+  buildVersionId,
+  deriveHash,
+  SCID_PLACEHOLDER
+} from '@interop/did-method-webvh'
 import type { ResourceLogEntry } from '@interop/storage-core'
 import {
   buildResourceLogEntry,
@@ -161,6 +165,44 @@ describe('verifyResourceLog (fabrication refusals)', () => {
         expectedMethod: METHOD
       })
     ).rejects.toThrow(/SCID does not verify/)
+  })
+
+  it('places and recomputes a SCID the state embeds in a longer string', async () => {
+    // The two-pass construction replaces every `{SCID}` placeholder, including
+    // one inside a longer state value, and the verifier's inverse substitutes
+    // substrings the same way (the kernel's rule), not only whole strings.
+    const alice = await makeLogClient()
+    const controller = fakeController({
+      versions: [{ versionId: '1-v1', keys: [alice.signingKeyMultibase] }]
+    })
+    const genesis = await buildResourceLogGenesis({
+      state: { type: 'TestState', id: `urn:log:${SCID_PLACEHOLDER}` },
+      method: METHOD,
+      controller,
+      signer: alice.logSigner
+    })
+    const { scid } = genesis.parameters as { scid: string }
+    expect(genesis.state).toEqual({ type: 'TestState', id: `urn:log:${scid}` })
+    const verified = await verifyResourceLog({
+      entries: [genesis],
+      controller,
+      expectedMethod: METHOD
+    })
+    expect(verified.scid).toBe(scid)
+    expect(verified.state).toEqual({ type: 'TestState', id: `urn:log:${scid}` })
+  })
+
+  it('refuses a genesis whose scid is empty as malformed, not as a hash mismatch', async () => {
+    const { controller, genesis } = await makeBaselineLog()
+    const forged = structuredClone(genesis)
+    ;(forged.parameters as { scid: string }).scid = ''
+    await expect(
+      verifyResourceLog({
+        entries: [forged],
+        controller,
+        expectedMethod: METHOD
+      })
+    ).rejects.toThrow(/non-empty scid/)
   })
 
   it('refuses a tampered entry state (the proof no longer verifies)', async () => {
