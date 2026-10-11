@@ -267,51 +267,6 @@ merging this item into VRL-11 at implementation time is fine.
 
 ## Cleanup
 
-### VRL-18: Factor the verify-then-pin block in `append.ts`
-
-- status: todo
-- priority: low
-- labels: cleanup, append
-- verdict: confirmed
-- acceptance:
-  - [ ] One private helper replaces the three identical verify-then-pin-write
-        sites (`append.ts:65-71`, `178-184`, `263-269`)
-
-### VRL-19: Share the sealed predicate in `seal.ts`
-
-- status: todo
-- priority: low
-- labels: cleanup, seal
-- verdict: confirmed
-- acceptance:
-  - [ ] `headControllerVersionIndex !== null && headControllerVersionIndex >= removalIndex`
-        appears once (lines 145-148 and 160-163 today)
-
-Pairs naturally with VRL-9.
-
-### VRL-20: Collapse the malformed-pin and fork guards in `verify.ts`
-
-- status: todo
-- priority: low
-- labels: cleanup, verify
-- verdict: confirmed
-- acceptance:
-  - [ ] The malformed-`pinnedOrdinal` guard (586-591) and the head-mismatch
-        guard (598) become one `fork` throw placed after the rollback check,
-        with identical `reason` outcomes for every input
-
-### VRL-21: Delete `src/declarations.d.ts`
-
-- status: todo
-- priority: low
-- labels: cleanup
-- verdict: confirmed
-- acceptance:
-  - [ ] File removed; `pnpm build` and `pnpm lint` pass
-
-The file holds only a commented-out `declare module 'jsonld'`; nothing imports
-`jsonld`.
-
 ### VRL-22: Use the kernel's `versionId` parse in `confirmAppend` and `entry.ts`
 
 - status: todo

@@ -756,20 +756,19 @@ export async function verifyResourceLog({
       })
     }
     const pinnedOrdinal = versionIdOrdinal(pin.head)
-    if (pinnedOrdinal === undefined) {
-      throw new ResourceLogContinuityError({
-        reason: 'fork',
-        pinnedHead: pin.head,
-        servedEntries: entries
-      })
-    }
-    if (entries.length < pinnedOrdinal) {
+    if (pinnedOrdinal !== undefined && entries.length < pinnedOrdinal) {
       throw new ResourceLogContinuityError({
         reason: 'rollback',
         pinnedHead: pin.head
       })
     }
-    if (entries[pinnedOrdinal - 1]!.versionId !== pin.head) {
+    // A pinned head that carries no ordinal cannot be located in the served
+    // log at all, so it is refused as the served log having forked away from
+    // it, the same way a head that is not at its ordinal is.
+    if (
+      pinnedOrdinal === undefined ||
+      entries[pinnedOrdinal - 1]!.versionId !== pin.head
+    ) {
       throw new ResourceLogContinuityError({
         reason: 'fork',
         pinnedHead: pin.head,

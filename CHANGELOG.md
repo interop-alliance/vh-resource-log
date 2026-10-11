@@ -1,5 +1,14 @@
 # @interop/vh-resource-log Changelog
 
+## 0.7.1 - TBD
+
+### Changed
+
+- Internal cleanup: the verifier's pin-continuity check refuses a pinned head
+  that carries no ordinal from the same `fork` throw as a head that is not at
+  its ordinal; the verdict and attached evidence are unchanged for every input.
+  The unused `src/declarations.d.ts` is removed.
+
 ## 0.7.0 - 2026-10-09
 
 ### Changed
@@ -33,8 +42,8 @@
   and `parseVersionedVm` returns `fragment`. The URL the appender writes is
   unchanged.
 - `fakeController` (`./testing`) accepts per-version `methods`, embedded in
-  `assertionMethod` verbatim, so a consumer can test a document whose member
-  id and published key disagree.
+  `assertionMethod` verbatim, so a consumer can test a document whose member id
+  and published key disagree.
 
 ## 0.6.1 - 2026-10-03
 

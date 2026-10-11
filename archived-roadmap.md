@@ -441,3 +441,63 @@ member's `publicKeyMultibase`. did-method-webvh's log-level
 document, not a log. The repeated-key refusal now runs after the entry's
 controller version is settled, so two proofs by one key at different versions
 refuse as disagreeing versions.
+
+### VRL-18: Factor the verify-then-pin block in `append.ts`
+
+- status: done (2026-08-22)
+- priority: low
+- labels: cleanup, append
+- verdict: confirmed
+- acceptance:
+  - [x] One private helper replaces the three identical verify-then-pin-write
+        sites (`append.ts:65-71`, `178-184`, `263-269`)
+
+Landed 2026-08-22 in vh-resource-log 0.4.1: the private `verifyAndPin` helper in
+`src/append.ts` is the one verify-then-pin step that `readResourceLog`, the
+append read-back, and the create read-back go through.
+
+### VRL-19: Share the sealed predicate in `seal.ts`
+
+- status: done (2026-08-22)
+- priority: low
+- labels: cleanup, seal
+- verdict: confirmed
+- acceptance:
+  - [x] `headControllerVersionIndex !== null && headControllerVersionIndex >= removalIndex`
+        appears once (lines 145-148 and 160-163 today)
+
+Pairs naturally with VRL-9.
+
+Landed 2026-08-22 in vh-resource-log 0.4.1: the private `isSealed` predicate in
+`src/seal.ts` is the one place the comparison appears.
+
+### VRL-20: Collapse the malformed-pin and fork guards in `verify.ts`
+
+- status: done (2026-10-10)
+- priority: low
+- labels: cleanup, verify
+- verdict: confirmed
+- acceptance:
+  - [x] The malformed-`pinnedOrdinal` guard (586-591) and the head-mismatch
+        guard (598) become one `fork` throw placed after the rollback check,
+        with identical `reason` outcomes for every input
+
+Landed 2026-10-10 in vh-resource-log 0.7.1: `src/verify.ts` reads the pinned
+ordinal once, runs the rollback check only when the ordinal parses, and refuses
+a missing ordinal and a head mismatch from one `fork` throw. The existing
+"refuses a pinned head with no ordinal as a fork" test pins the unchanged
+verdict.
+
+### VRL-21: Delete `src/declarations.d.ts`
+
+- status: done (2026-10-10)
+- priority: low
+- labels: cleanup
+- verdict: confirmed
+- acceptance:
+  - [x] File removed; `pnpm build` and `pnpm lint` pass
+
+The file holds only a commented-out `declare module 'jsonld'`; nothing imports
+`jsonld`.
+
+Landed 2026-10-10 in vh-resource-log 0.7.1.
