@@ -16,7 +16,7 @@
  * refusal throws the read path's class and nothing is written.
  */
 import { canonicalizeStrict } from '@interop/did-method-webvh'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   appendResourceLog,
   buildResourceLogEntry,
@@ -385,6 +385,97 @@ describe('appendResourceLog', () => {
     })
     expect(verified.entries).toHaveLength(1)
     expect(store._getEntries()).toEqual(before)
+  })
+
+  it('seeds the first attempt from a supplied read, reading only on read-back', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 1 }
+    })
+    const current = await readResourceLog({
+      store,
+      controller,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID
+    })
+    const readSpy = vi.spyOn(store, 'read')
+    const heads: unknown[] = []
+    const confirmed = await appendResourceLog({
+      store,
+      controller,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      buildState: verified => {
+        heads.push(verified)
+        return { type: 'TestState', value: 2 }
+      },
+      current: current!
+    })
+    // The supplied view is the one the entry was built on; the only read is
+    // the read-back confirmation.
+    expect(heads).toEqual([current!.verified])
+    expect(readSpy).toHaveBeenCalledTimes(1)
+    expect(confirmed.entries).toHaveLength(2)
+    expect(confirmed.state).toEqual({ type: 'TestState', value: 2 })
+  })
+
+  it('re-reads and rebases when the supplied read is stale', async () => {
+    const { alice, controller, store, pinStore } = await makeWriter()
+    await createResourceLog({
+      store,
+      controller,
+      method: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      state: { type: 'TestState', value: 1 }
+    })
+    const stale = await readResourceLog({
+      store,
+      controller,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID
+    })
+    // A concurrent writer extends the log after the caller's read.
+    await appendResourceLog({
+      store,
+      controller,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      buildState: () => ({ type: 'TestState', value: 2 })
+    })
+    const heads: number[] = []
+    const confirmed = await appendResourceLog({
+      store,
+      controller,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner,
+      buildState: verified => {
+        heads.push(verified.state.value as number)
+        return { type: 'TestState', value: 3 }
+      },
+      current: stale!,
+      maxAttempts: 1
+    })
+    // Built once on the stale seed, lost the CAS, rebuilt on the re-read head.
+    // The seeded attempt is not counted: one fresh-read attempt remains.
+    expect(heads).toEqual([1, 2])
+    expect(confirmed.entries).toHaveLength(3)
+    expect(confirmed.state).toEqual({ type: 'TestState', value: 3 })
   })
 
   it('rebases and retries when a concurrent append wins the CAS', async () => {

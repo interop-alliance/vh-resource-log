@@ -243,21 +243,6 @@ merging this item into VRL-11 at implementation time is fine.
 
 ## Cleanup
 
-### VRL-24: Thread the first read into `appendResourceLog` from `sealResourceLog`
-
-- status: todo
-- priority: low
-- labels: cleanup, efficiency, seal
-- verdict: plausible
-- acceptance:
-  - [ ] `sealResourceLog`'s own `readResourceLog` result (etag and verified
-        view) seeds `appendResourceLog`'s first attempt instead of being read
-        again
-
-`src/seal.ts:133` then `src/append.ts:129`. Redundant but cheap in practice:
-wallet-core threads `verified` on every call after the first. Consider together
-with VRL-9.
-
 ### VRL-25: `substituteScid` re-derives the kernel's `replaceValueInObject`
 
 - status: draft

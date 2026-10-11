@@ -159,6 +159,30 @@ describe('sealResourceLog', () => {
     expect(result.verified!.headControllerVersionIndex).toBe(1)
   })
 
+  it('seeds the backstop append with its own read, reading again only on read-back', async () => {
+    const { alice, preEdit, postEdit } = await makeAccount()
+    const { store, pinStore } = await makeLog({
+      controller: preEdit,
+      signer: alice.logSigner
+    })
+    const readSpy = vi.spyOn(store, 'read')
+
+    const result = await sealResourceLog({
+      store,
+      controller: postEdit,
+      expectedMethod: METHOD,
+      pinStore,
+      logId: LOG_ID,
+      signer: alice.logSigner
+    })
+
+    expect(result.sealed).toBe(true)
+    // The sweep's read, then the read-back confirmation; no second
+    // pre-append read.
+    expect(readSpy).toHaveBeenCalledTimes(2)
+    expect(store._getEntries()!).toHaveLength(2)
+  })
+
   it('is idempotent: a second sweep writes nothing', async () => {
     const { alice, preEdit, postEdit } = await makeAccount()
     const { store, pinStore } = await makeLog({
@@ -272,7 +296,7 @@ describe('sealResourceLog', () => {
       pinStore,
       logId: LOG_ID,
       signer: alice.logSigner,
-      verified: read!.verified
+      current: read!
     })
     expect(result).toEqual({ sealed: false, verified: read!.verified })
     expect(result.verified).toBe(read!.verified)
@@ -316,7 +340,7 @@ describe('sealResourceLog', () => {
       pinStore,
       logId: LOG_ID,
       signer: alice.logSigner,
-      verified: read!.verified
+      current: read!
     })
 
     expect(result.sealed).toBe(false)
@@ -363,7 +387,7 @@ describe('sealResourceLog', () => {
       pinStore,
       logId: LOG_ID,
       signer: alice.logSigner,
-      verified: stale!.verified
+      current: stale!
     })
     // Nothing was written, so the report matches a fresh read of the same
     // log: the hint that routed this call to the append path does not count.
@@ -450,7 +474,7 @@ describe('sealResourceLog', () => {
       pinStore,
       logId: LOG_ID,
       signer: alice.logSigner,
-      verified: read!.verified
+      current: read!
     })
     expect(result).toEqual({ sealed: false, verified: read!.verified })
     expect(result.verified).toBe(read!.verified)

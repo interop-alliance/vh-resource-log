@@ -72,6 +72,17 @@ async function verifyAndPin({
 }
 
 /**
+ * One `readResourceLog` result: the verified log and the validator the next
+ * append is conditioned on. Handed back to `appendResourceLog` (or
+ * `sealResourceLog`) as `current`, it seeds the first attempt in place of a
+ * read.
+ */
+export interface ResourceLogRead {
+  verified: VerifiedResourceLog
+  etag?: string
+}
+
+/**
  * Reads and fully verifies a log through the store seam, advancing the
  * chain-head pin. Resolves `null` when the log resource does not exist yet
  * (the pre-genesis state) and no pin is held for it. An absent log under a
@@ -93,7 +104,7 @@ async function verifyAndPin({
  *   log
  * @param options.logId {string}   the pin-slot key for this log, from
  *   `resourceLogPinId`
- * @returns {Promise<{ verified: VerifiedResourceLog; etag?: string } | null>}
+ * @returns {Promise<ResourceLogRead | null>}
  */
 export async function readResourceLog({
   store,
@@ -107,7 +118,7 @@ export async function readResourceLog({
   expectedMethod: string
   pinStore: ResourceLogPinStore
   logId: string
-}): Promise<{ verified: VerifiedResourceLog; etag?: string } | null> {
+}): Promise<ResourceLogRead | null> {
   const current = await store.read()
   if (current === null) {
     const pin = await pinStore.read({ logId })
@@ -156,8 +167,15 @@ export async function readResourceLog({
  *   full next state rebased on the verified head, or `null` when the head
  *   already carries the change
  * @param [options.versionTime] {string}   RFC3339 UTC; defaults to now
- * @param [options.maxAttempts] {number}   CAS attempts before giving up
- *   (default 3)
+ * @param [options.maxAttempts] {number}   fresh-read CAS attempts before
+ *   giving up (default 3); a seeded first attempt is not counted
+ * @param [options.current] {ResourceLogRead}   the caller's own
+ *   {@link readResourceLog} result for this store and `logId`, passed
+ *   unmodified, seeding the first attempt in place of a read. The seed is
+ *   caller-attested: it is taken as that read's verified, pinned view and is
+ *   not re-checked against the pin. A validator that has since gone stale is
+ *   a lost race, and the retry re-reads. A seed with no validator seeds
+ *   nothing; the first attempt reads
  * @returns {Promise<VerifiedResourceLog>}   the read-back, re-verified log
  *   (whether or not this call appended)
  */
@@ -170,7 +188,8 @@ export async function appendResourceLog({
   signer,
   buildState,
   versionTime,
-  maxAttempts = 3
+  maxAttempts = 3,
+  current: seed
 }: {
   store: ResourceLogStore
   controller: ResourceLogController
@@ -184,16 +203,28 @@ export async function appendResourceLog({
     Promise<ResourceLogEntry['state'] | null> | ResourceLogEntry['state'] | null
   versionTime?: string
   maxAttempts?: number
+  current?: ResourceLogRead
 }): Promise<VerifiedResourceLog> {
   let lastConflict: unknown
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const current = await readResourceLog({
-      store,
-      controller,
-      expectedMethod,
-      pinStore,
-      logId
-    })
+  // A seed carrying a validator stands in for the first attempt's read. It is
+  // used once and not counted, so a seeded call keeps `maxAttempts` fresh
+  // reads. A seed without one (a confirmed append) seeds nothing.
+  let seeded = seed?.etag ? seed : undefined
+  for (let reads = 0; reads < maxAttempts;) {
+    let current: ResourceLogRead | null
+    if (seeded === undefined) {
+      reads++
+      current = await readResourceLog({
+        store,
+        controller,
+        expectedMethod,
+        pinStore,
+        logId
+      })
+    } else {
+      current = seeded
+      seeded = undefined
+    }
     if (current === null) {
       throw new Error(
         'Cannot append to the resource log: the log does not exist yet ' +

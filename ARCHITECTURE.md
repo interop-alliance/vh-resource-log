@@ -40,7 +40,8 @@ src/pin.ts         The chain-head pin port (ResourceLogHeadPin,
                    ResourceLogPinStore, resourceLogPinId,
                    collectionLogPinId, memory impl)
 src/append.ts      readResourceLog / appendResourceLog / createResourceLog
-                   (verify-build-verify-CAS-rebase-confirm)
+                   (verify-build-verify-CAS-rebase-confirm; a caller-attested
+                   seed may stand in for the first verify)
 src/seal.ts        The sealing sweep (latestAssertionRemovalIndex,
                    sealResourceLog)
 src/testing.ts     The "./testing" subpath: fakeController, memoryLogStore
@@ -58,7 +59,13 @@ depend on this library; nothing here depends on them.
 1. **Log state is adopted only from a verified head.** `readResourceLog` is the
    one read entry point; chain, proofs, external authorization, and the
    chain-head pin are all checked before any state is handed out, so the pin
-   rules cannot be bypassed by reading around them.
+   rules cannot be bypassed by reading around them. The `current` seed that
+   `appendResourceLog` and `sealResourceLog` accept is caller-attested: the
+   library takes it as that caller's own `readResourceLog` result for the same
+   store and log, passed unmodified, and does not re-check it against the pin. A
+   seed from elsewhere is outside the verifier's guarantees; the only protection
+   left is read-back (invariant 7). A seed whose validator has gone stale costs
+   nothing but a lost race, which re-reads.
 2. **The verifier recomputes everything.** No served head, digest, or count is
    ever accepted in place of recomputation (`verify.ts`); any failure rejects
    the whole log, not just the failing entry.
@@ -165,9 +172,9 @@ depend on this library; nothing here depends on them.
     removed member (invariant 11); the convergence branch, which writes nothing,
     still runs before the pass. The sweep's `sealed` report means "this call
     wrote the sealing append", decided by the view the append path settled on
-    rather than by any `verified` hint the caller supplied, so the same log
-    state reports the same result whether the hint was fresh, stale, or absent.
-    The wallet-side ceremonies that drive it stay in `@interop/wallet-core`.
+    rather than by any `current` hint the caller supplied, so the same log state
+    reports the same result whether the hint was fresh, stale, or absent. The
+    wallet-side ceremonies that drive it stay in `@interop/wallet-core`.
 11. **The write path refuses before the host does.** Before `store.append` or
     `store.create`, the candidate entry is verified as the reader would verify
     it at its ordinal (shape, hash chain to the head, proofs, the authorization
@@ -379,6 +386,11 @@ ARCHITECTURE.md Glossary section.
 - **Rebase** -- the caller's response to a lost race: re-read, re-verify,
   rebuild the candidate on the new verified head, retry (`appendResourceLog`).
   Avoid: merge, replay.
+- **Seed** -- the `current` option of `appendResourceLog` and `sealResourceLog`:
+  a `ResourceLogRead` (verified log plus validator) the caller obtained from
+  `readResourceLog` moments ago, standing in for the first attempt's read.
+  Caller-attested, not re-verified (invariant 1); a seeded attempt does not
+  count against `maxAttempts`. Avoid: hint (for the append path), cache.
 - **Lost race** -- a concurrent writer got there first: a stale validator on
   append, or an existing log on create. Benign; on create the winner's log is
   adopted. Avoid: collision, failure.

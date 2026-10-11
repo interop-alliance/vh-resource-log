@@ -59,7 +59,8 @@ export {
 export {
   appendResourceLog,
   createResourceLog,
-  readResourceLog
+  readResourceLog,
+  type ResourceLogRead
 } from './append.js'
 export { latestAssertionRemovalIndex, sealResourceLog } from './seal.js'
 export {

@@ -31,7 +31,11 @@
  * before anything is written).
  */
 import type { ResourceLogStore } from './store.js'
-import { appendResourceLog, readResourceLog } from './append.js'
+import {
+  appendResourceLog,
+  readResourceLog,
+  type ResourceLogRead
+} from './append.js'
 import type { ResourceLogController } from './controller.js'
 import { relationKeyMultibases } from './document.js'
 import type { ResourceLogSigner } from './entry.js'
@@ -120,7 +124,7 @@ function isSealed({
  *
  * `sealed` reports whether THIS call wrote the sealing append. It is `false`
  * whenever nothing was written, including the run that found the log already
- * sealed through a stale `verified` hint and converged on the append path's
+ * sealed through a stale `current` hint and converged on the append path's
  * own read (the rebase hook returns `null` rather than duplicating), so the
  * same log state reports the same result with or without a hint. `verified`
  * is the log as last verified: the supplied hint when nothing was read, the
@@ -139,14 +143,18 @@ function isSealed({
  * @param options.signer {ResourceLogSigner}   this client's enrolled signing
  *   key
  * @param [options.versionTime] {string}   RFC3339 UTC; defaults to now
- * @param [options.verified] {VerifiedResourceLog}   a log view the caller
+ * @param [options.current] {ResourceLogRead}   a log view the caller
  *   verified moments ago (the most recent read or confirmed append on the same
- *   store), letting the sweep skip its own read. Staleness is safe in both
- *   directions: entry controller versionIds are verifier-enforced monotone,
- *   so a stale head carrying a controller version at or past the removal
- *   means the true head does too, and an
- *   unsealed verdict is re-checked by the append path's own read before
- *   anything is written
+ *   store and `logId`), letting the sweep skip its own read. It is handed to
+ *   the append path as its `current` seed, so one carrying the read's
+ *   validator also seeds the first attempt there; a confirmed append carries
+ *   none, and that route reads before writing. The hint is caller-attested,
+ *   as the append path's seed is.
+ *   Staleness is safe in both directions: entry controller versionIds are
+ *   verifier-enforced monotone, so a stale head carrying a controller version
+ *   at or past the removal means the true head does too, and an unsealed
+ *   verdict is re-checked by the append path's read, or loses the race on the
+ *   stale validator and is re-read, before anything is written
  * @returns {Promise<{ sealed: boolean, verified: VerifiedResourceLog | null }>}
  */
 export async function sealResourceLog({
@@ -157,7 +165,7 @@ export async function sealResourceLog({
   logId,
   signer,
   versionTime,
-  verified: knownVerified
+  current: hint
 }: {
   store: ResourceLogStore
   controller: ResourceLogController
@@ -166,18 +174,21 @@ export async function sealResourceLog({
   logId: string
   signer: ResourceLogSigner
   versionTime?: string
-  verified?: VerifiedResourceLog
+  current?: ResourceLogRead
 }): Promise<{ sealed: boolean; verified: VerifiedResourceLog | null }> {
   if (controller.versionIds.length === 0) {
-    return { sealed: false, verified: knownVerified ?? null }
+    return { sealed: false, verified: hint?.verified ?? null }
   }
   const removalIndex = await latestAssertionRemovalIndex({ controller })
   if (removalIndex === 0) {
-    return { sealed: false, verified: knownVerified ?? null }
+    return { sealed: false, verified: hint?.verified ?? null }
   }
-  let verified = knownVerified ?? null
-  if (verified === null) {
-    const current = await readResourceLog({
+  // The caller's hint, else the sweep's own read. Either one seeds the append
+  // path's first attempt; the append path reads for itself when the seed
+  // carries no validator.
+  let current: ResourceLogRead | null = hint ?? null
+  if (current === null) {
+    current = await readResourceLog({
       store,
       controller,
       expectedMethod,
@@ -187,8 +198,8 @@ export async function sealResourceLog({
     if (current === null) {
       return { sealed: false, verified: null }
     }
-    verified = current.verified
   }
+  const { verified } = current
   if (isSealed({ ...verified, removalIndex })) {
     return { sealed: false, verified }
   }
@@ -210,7 +221,8 @@ export async function sealResourceLog({
       sealed = !isSealed({ ...rebased, removalIndex })
       return sealed ? rebased.head.state : null
     },
-    ...(versionTime === undefined ? {} : { versionTime })
+    ...(versionTime === undefined ? {} : { versionTime }),
+    current
   })
   return { sealed, verified: confirmed }
 }

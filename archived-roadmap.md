@@ -574,3 +574,24 @@ the flag as a ceremony outcome.
 Landed 2026-10-11: vh-resource-log 0.7.1. `sealed` is set from the rebase hook's
 last run, so a converged append reports `false`; both early returns hand back
 the supplied hint. No consumer change was needed.
+
+### VRL-24: Thread the first read into `appendResourceLog` from `sealResourceLog`
+
+- status: done (2026-10-11)
+- priority: low
+- labels: cleanup, efficiency, seal
+- verdict: plausible
+- acceptance:
+  - [x] `sealResourceLog`'s own `readResourceLog` result (etag and verified
+        view) seeds `appendResourceLog`'s first attempt instead of being read
+        again
+
+`src/seal.ts:133` then `src/append.ts:129`. Redundant but cheap in practice:
+wallet-core threads `verified` on every call after the first. Consider together
+with VRL-9.
+
+Landed 2026-10-11: vh-resource-log 0.8.0, as the optional `current` option
+(`ResourceLogRead`) on `appendResourceLog`, caller-attested and not counted
+against `maxAttempts`. `sealResourceLog`'s hint widened to the same type, so a
+hint that carries a validator seeds the append path too; a hint from a confirmed
+append carries none and that route still reads.

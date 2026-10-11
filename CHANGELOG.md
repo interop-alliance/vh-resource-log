@@ -1,6 +1,15 @@
 # @interop/vh-resource-log Changelog
 
-## 0.7.1 - TBD
+## 0.8.0 - TBD
+
+### Added
+
+- `appendResourceLog` accepts an optional `current` option, the caller's own
+  `readResourceLog` result (the new exported `ResourceLogRead` type), which
+  seeds the first attempt in place of a read and does not count against
+  `maxAttempts`. The seed is caller-attested: it is not re-checked against the
+  pin, and a validator that has gone stale is a lost race that re-reads. A seed
+  with no validator seeds nothing; the first attempt reads.
 
 ### Fixed
 
@@ -13,6 +22,11 @@
 
 ### Changed
 
+- Breaking: `sealResourceLog`'s `verified` hint is now `current`, a
+  `ResourceLogRead`. A hint carrying a validator seeds the append path's first
+  attempt, and the sweep's own read does the same, so a sweep that writes no
+  longer reads the log twice before the append. A hint from a confirmed append
+  carries no validator, and that route reads before writing as before.
 - Internal cleanup: the verifier's pin-continuity check refuses a pinned head
   that carries no ordinal from the same `fork` throw as a head that is not at
   its ordinal; the verdict and attached evidence are unchanged for every input.
