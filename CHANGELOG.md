@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.8.1 - TBD
+
+### Changed
+
+- Update to latest di core.
+
 ## 0.8.0 - 2026-10-11
 
 ### Added
