@@ -1630,20 +1630,21 @@ describe('verifyResourceLog (dereferenced verification method)', () => {
 
   it('dereferences relative member ids and references against the document id (DID Core)', async () => {
     const alice = await makeLogClient()
+    const relativeMember = {
+      id: '#zKey',
+      publicKeyMultibase: alice.signingKeyMultibase
+    }
     // A reference `#zKey` resolving through a relative `verificationMethod`
-    // id, and an embedded member carrying a relative id; the document
-    // carries its own `id` for the first and none for the second.
+    // id, and an embedded member carrying a relative id, both under the
+    // document's own `id`.
     const referenced = withDocument({
       id: CONTROLLER_DID,
-      verificationMethod: [
-        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
-      ],
+      verificationMethod: [relativeMember],
       assertionMethod: ['#zKey']
     })
     const embedded = withDocument({
-      assertionMethod: [
-        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
-      ]
+      id: CONTROLLER_DID,
+      assertionMethod: [relativeMember]
     })
     for (const controller of [referenced, embedded]) {
       const entries = await logUnder({ alice, controller, fragment: 'zKey' })
@@ -1654,25 +1655,22 @@ describe('verifyResourceLog (dereferenced verification method)', () => {
       })
       expect(verified.state).toEqual({ type: 'TestState', value: 2 })
     }
-    // A relative id under a document whose `id` is another DID resolves
-    // against that DID, so it is not this controller's member.
+    // A relative id under a foreign `id`, or under no `id`, is not this
+    // controller's member: the proof's own DID is not the base.
     const foreign = withDocument({
       id: 'did:webvh:QmOther:example.com:other',
-      assertionMethod: [
-        { id: '#zKey', publicKeyMultibase: alice.signingKeyMultibase }
-      ]
+      assertionMethod: [relativeMember]
     })
-    await expect(
-      verifyResourceLog({
-        entries: await logUnder({
-          alice,
-          controller: foreign,
-          fragment: 'zKey'
-        }),
-        controller: foreign,
-        expectedMethod: METHOD
-      })
-    ).rejects.toThrow(/does not list under assertionMethod/)
+    const unbased = withDocument({ assertionMethod: [relativeMember] })
+    for (const controller of [foreign, unbased]) {
+      await expect(
+        verifyResourceLog({
+          entries: await logUnder({ alice, controller, fragment: 'zKey' }),
+          controller,
+          expectedMethod: METHOD
+        })
+      ).rejects.toThrow(/does not list under assertionMethod/)
+    }
   })
 
   it('refuses an entry signed by the key the fragment names when the member publishes another key', async () => {

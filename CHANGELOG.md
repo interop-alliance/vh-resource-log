@@ -1,5 +1,13 @@
 # @interop/vh-resource-log Changelog
 
+## 0.9.0 - TBD
+
+### Changed
+
+- `relationMemberNamed` resolves a relative member id against the document's own
+  `id` alone. Before, a document without an `id` used the URL's own DID as the
+  base, so a URL under any DID could name one of its relative members.
+
 ## 0.8.1 - 2026-10-12
 
 ### Changed

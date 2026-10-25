@@ -337,12 +337,13 @@ ARCHITECTURE.md Glossary section.
   the stack mints it equal to the key, but nothing in the verifier reads it as
   one, so a document whose member id and published key disagree is verified
   under the published key. Member ids are compared in absolute form, with a
-  relative id resolved against the document's `id` (`relationMemberNamed` in
-  `document.ts`). It is checked against that version on purpose, so a signature
-  made while the method was listed verifies forever. The server-side
-  counterpart, which checks the document as resolved now, is the current-key-set
-  rule in freewallet's and wallet-core's glossaries; the two are deliberately
-  asymmetric. Avoid: current-key-set rule (for this rule), membership check.
+  relative id resolved against the document's `id` alone (`relationMemberNamed`
+  in `document.ts`). A document without an `id` matches no relative member. It
+  is checked against that version on purpose, so a signature made while the
+  method was listed verifies forever. The server-side counterpart, which checks
+  the document as resolved now, is the current-key-set rule in freewallet's and
+  wallet-core's glossaries; the two are deliberately asymmetric. Avoid:
+  current-key-set rule (for this rule), membership check.
 - **Admission hook** -- the controller view's optional `admitAppend`: the
   per-proof seam through which controller-domain append policy reaches the
   verifier (invariant 6). This library carries no policy of its own; the policy

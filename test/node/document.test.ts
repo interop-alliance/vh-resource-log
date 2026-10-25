@@ -108,11 +108,32 @@ describe('relationMemberNamed', () => {
     expect(named('zUnknown')).toBeUndefined()
   })
 
-  it('resolves a relative id against the URL DID when the document has none, and against the document id otherwise', () => {
+  it('resolves a relative id against the document id alone', () => {
     const member = { id: `#${KEY_A}`, publicKeyMultibase: KEY_A }
+    // No `id`: the URL's own DID is not the base.
+    for (const did of [DID, `did:key:${KEY_B}`]) {
+      expect(
+        relationMemberNamed({
+          doc: { assertionMethod: [member] },
+          relation: 'assertionMethod',
+          did,
+          fragment: KEY_A
+        })
+      ).toBeUndefined()
+    }
+    // An absolute member still resolves on the same document.
     expect(
       relationMemberNamed({
-        doc: { assertionMethod: [member] },
+        doc: { assertionMethod: [`${DID}#${KEY_A}`] },
+        relation: 'assertionMethod',
+        did: DID,
+        fragment: KEY_A
+      })
+    ).toEqual({ id: `${DID}#${KEY_A}`, method: undefined })
+    // With an `id`, a relative member resolves against it.
+    expect(
+      relationMemberNamed({
+        doc: { id: DID, assertionMethod: [member] },
         relation: 'assertionMethod',
         did: DID,
         fragment: KEY_A

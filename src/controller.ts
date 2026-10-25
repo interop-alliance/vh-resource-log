@@ -50,10 +50,10 @@ export interface ResourceLogController {
    * the shared document readers: a proof's verification-method DID URL names
    * the member `${did}#${fragment}`, and the key the proof is verified under
    * is that member's resolved `publicKeyMultibase`. The fragment itself is
-   * an opaque selector, as in DID Core, and a relative member id resolves
-   * against the document's `id`. A view answers with the document and
-   * applies no key rule of its own. A version the verified history does not
-   * carry rejects (reported as Integrity, VRL-6).
+   * an opaque selector, as in DID Core. A relative member id resolves
+   * against the document's `id` alone, so a view returns the document with
+   * its `id`. A view applies no key rule of its own. A version the verified
+   * history does not carry rejects (reported as Integrity, VRL-6).
    *
    * @param [versionId] {string}
    * @returns {Promise<ControllerDocument>}

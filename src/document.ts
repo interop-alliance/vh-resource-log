@@ -197,7 +197,9 @@ export function relationMembers<M extends VerificationMethodShape>({
  * The member of one relation that a DID URL names (the dereference every
  * proof reader of this stack performs): the member whose id, in absolute
  * form, is `${did}#${fragment}`. A relative member id resolves against the
- * document's own `id`, or against `did` when the document carries none.
+ * document's own `id` alone. A document without an `id` matches absolute
+ * member ids only. The URL's own DID is not a base the document has vouched
+ * for, so taking it as one would let a URL under any DID name a member here.
  * `undefined` when the relation lists no such member; a member found with no
  * method is returned as is, so the caller refuses it under the key rule.
  *
@@ -220,11 +222,10 @@ export function relationMemberNamed<M extends VerificationMethodShape>({
   fragment: string
 }): RelationMember<M> | undefined {
   const wanted = `${did}#${fragment}`
-  const base = doc.id ?? did
   return relationMembers({ doc, relation }).find(
     member =>
       member.id !== undefined &&
-      absoluteMethodId({ id: member.id, did: base }) === wanted
+      absoluteMethodId({ id: member.id, did: doc.id }) === wanted
   )
 }
 

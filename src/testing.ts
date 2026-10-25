@@ -77,6 +77,7 @@ export function fakeController({
       publicKeyMultibase: key
     }))
     return {
+      id: did,
       verificationMethod,
       assertionMethod: [
         ...verificationMethod.map(method => method.id),
