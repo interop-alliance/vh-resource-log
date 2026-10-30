@@ -1,5 +1,14 @@
 # @interop/vh-resource-log Changelog
 
+## 0.11.0 - TBD
+
+### Changed
+
+- **BREAKING**: `@interop/storage-core` is now a peer dependency (`>=0.43.0`)
+  instead of a regular dependency. This package only imports its types, so
+  consumers supply the single copy they already depend on, and a storage-core
+  publish no longer requires a release here.
+
 ## 0.10.1 - 2026-10-30
 
 ### Added

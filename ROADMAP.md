@@ -129,6 +129,56 @@ the `method` check catches it.
 the real adapter JSON-serializes it to a string, so read-back verification fails
 only in production.
 
+### VRL-32: The resume gate re-checks nothing about the controller beyond the head index
+
+- status: todo
+- priority: low
+- labels: verify, resume
+- verdict: plausible
+- touches:
+  - vh-resource-log `src/verify.ts` (`resumeFrom`), ARCHITECTURE.md (the resume
+    paragraph), `test/node/resourceLog-resume.test.ts`
+  - wallet-core (`logGovernedDescriptorSource` and was-client's
+    `logGovernedDescriptorStore` are the resuming callers; neither reaches the
+    gap today, see below)
+- acceptance:
+  - [ ] Under an unversioned controller (empty `versionIds`), a resumed
+        verification either re-checks every record entry's proof keys against
+        the current document, or takes the full pass; a key revoked from the
+        current document that signed a record entry refuses on the resuming
+        reader exactly as it does on a fresh one
+  - [ ] A `controller.did` that differs from the DID the record's entries are
+        signed under takes the full pass (or refuses), rather than resuming
+  - [ ] ARCHITECTURE.md's resume paragraph states which controller facts the
+        gate re-checks and which it carries from the record
+  - [ ] Tests for both: unversioned-controller revocation between a first and a
+        resumed read, and a `did` change between them
+
+`src/verify.ts` (`resumeFrom`). With `previous`, the gate checks the format
+identifier, that the record's head controller version sits at the same index of
+the current `versionIds`, and that the served log extends the record by
+`versionId`. Two facts a full pass checks per entry are carried from the record
+instead:
+
+- Under an unversioned controller the gate applies no controller check at all
+  (`headIndex === null` and `versionIds` empty is the only condition). A full
+  pass dereferences `documentAt(undefined)`, the CURRENT document, for every
+  entry. So revoking a key that signed a record entry makes every fresh reader
+  refuse the whole log, while a reader holding a record keeps accepting it: the
+  two disagree on the current-key-set rule until the record is dropped.
+- A full pass refuses an entry signed under a `did` other than `controller.did`.
+  The gate never compares the record's signer DIDs with the view resolved now,
+  so a `did` change between reads resumes over entries the full pass would
+  refuse.
+
+Neither is reachable through the in-tree callers. wallet-core's did:webvh
+adapter always sets `versionIds` to the verified account log's ids, which is
+never empty, and each resuming source or store is bound to one Space and one
+pointer-fixed DID. The gap matters for a caller that passes an unversioned
+controller (the fixtures' `currentKeys` mode models one) or whose resolver can
+hand a different DID across reads. Found by wallet-core's ceremony review of its
+descriptor-source resume memo (2026-10-30).
+
 ## Error contracts and classification
 
 ### VRL-13: Distinguish "controller versionId unknown to this reader" from fabrication

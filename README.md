@@ -71,8 +71,11 @@ fall back to it on (Integrity, and Continuity except a `rollback`).
 To install via PNPM:
 
 ```
-pnpm install @interop/vh-resource-log
+pnpm install @interop/vh-resource-log @interop/storage-core
 ```
+
+`@interop/storage-core` is a peer dependency (this package imports only its wire
+types), so install it alongside.
 
 ### Development
 
