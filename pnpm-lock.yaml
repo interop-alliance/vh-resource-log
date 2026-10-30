@@ -12,8 +12,8 @@ importers:
         specifier: ^5.18.0
         version: 5.18.0
       '@interop/storage-core':
-        specifier: ^0.42.0
-        version: 0.42.0
+        specifier: ^0.43.0
+        version: 0.43.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -163,8 +163,8 @@ packages:
       react-native-get-random-values:
         optional: true
 
-  '@interop/storage-core@0.42.0':
-    resolution: {integrity: sha512-9ERs9uKOQn6FtBzuDmBkZeCVUZS4+g7W5ZICd9/uoFddjcngOWdGdx10LUaS7bdSb1Q3pDH9/HYhnVi0TrP8Zg==}
+  '@interop/storage-core@0.43.0':
+    resolution: {integrity: sha512-pa9aoh1WgeKqodIvi74iYR1mQm6v3rpQYbyzvQs73XPE4p01EN7Sh8wkOGZ7hyZTdwPRHd5oDeS2G2qwnUCRMA==}
     engines: {node: '>=22.0'}
 
   '@jridgewell/resolve-uri@3.1.2':
@@ -1131,7 +1131,7 @@ snapshots:
       '@noble/hashes': 2.4.0
       '@scure/base': 2.4.0
 
-  '@interop/storage-core@0.42.0':
+  '@interop/storage-core@0.43.0':
     dependencies:
       '@interop/data-integrity-core': 8.9.0
 

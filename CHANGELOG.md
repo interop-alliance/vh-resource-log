@@ -1,5 +1,11 @@
 # @interop/vh-resource-log Changelog
 
+## 0.10.1 - TBD
+
+### Added
+
+- Update to latest storage-core (`exportSigningMethod` rename).
+
 ## 0.10.0 - 2026-10-30
 
 ### Added
