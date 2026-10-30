@@ -66,19 +66,36 @@ depend on this library; nothing here depends on them.
    seed from elsewhere is outside the verifier's guarantees; the only protection
    left is read-back (invariant 7). A seed whose validator has gone stale costs
    nothing but a lost race, which re-reads.
-2. **The verifier recomputes everything.** No served head, digest, or count is
-   ever accepted in place of recomputation (`verify.ts`); any failure rejects
-   the whole log, not just the failing entry.
+2. **The verifier recomputes everything it has not verified before.** No served
+   head, digest, or count is ever accepted in place of recomputation
+   (`verify.ts`); any failure rejects the whole log, not just the failing entry.
+   The one thing accepted in place of recomputation is the verifier's own
+   earlier result. A caller passes its `VerifiedResourceLog` back as `previous`
+   (through `verifyResourceLog` or `readResourceLog`, or as the append seed) and
+   the pass resumes from that record's head. The served prefix is matched to the
+   record by `versionId` alone. Each `versionId` is a hash commitment to its
+   entry's content and its predecessor, so an equal prefix is the content
+   verified before. The entries past the record are chained to its head, run
+   through every per-entry check, and carried from its head controller version.
+   The result is built from the record's own entries, so no served prefix bytes
+   are handed out unverified. A served log that does not extend the record is
+   verified in full, so every refusal keeps the class and message a record-less
+   pass gives. Like the append seed, the record is caller-attested (invariant 1)
+   and is not re-checked. The verifier does confirm that the record's head
+   controller version is at the record's index of the current `versionIds`
+   before it carries that index forward; a record from a view that disagrees is
+   verified in full.
 3. **The chain-head pin is established at first contact, advances only past a
-   full verification, and is replaced wholesale only across a verified
-   handover.** The pin never regresses; a rollback, fork, SCID switch, or method
-   switch against it refuses with `ResourceLogContinuityError`, and fork
-   refusals retain the served entries as transferable evidence of equivocation.
-   An absent log is pre-genesis only while no pin is held: once a pin exists for
-   the slot, a host serving nothing there is a `rollback`, through
-   `readResourceLog` and every path over it, and `createResourceLog` consults
-   the pin before it builds or writes anything, so a hidden log is never
-   overwritten with a fresh genesis.
+   verification, and is replaced wholesale only across a verified handover.** A
+   resumed verification (invariant 2) counts: its head is verified against the
+   record's head, and the record is the client's own. The pin never regresses; a
+   rollback, fork, SCID switch, or method switch against it refuses with
+   `ResourceLogContinuityError`, and fork refusals retain the served entries as
+   transferable evidence of equivocation. An absent log is pre-genesis only
+   while no pin is held: once a pin exists for the slot, a host serving nothing
+   there is a `rollback`, through `readResourceLog` and every path over it, and
+   `createResourceLog` consults the pin before it builds or writes anything, so
+   a hidden log is never overwritten with a fresh genesis.
 4. **Pin slot keys are derived by the library**, not chosen by a store
    implementation: `resourceLogPinId` builds
    `space/<spaceId>/<collectionId>/<resourceId>` for a log stored as a Resource,
@@ -270,9 +287,10 @@ ARCHITECTURE.md Glossary section.
   (`resource-log:0.1`, `RESOURCE_LOG_METHOD` in `@interop/storage-core`). A
   reader passes the one it expects as `expectedMethod`. Avoid: profile version,
   method string.
-- **Verified head** -- the last entry of a log after full verification, the only
-  head an entry is ever built on or a pin advanced to (invariant 1). A "stated
-  head" is anything the host serves as a summary; the verifier never accepts one
+- **Verified head** -- the last entry of a log after verification, full or
+  resumed from the client's own earlier result (invariant 2), the only head an
+  entry is ever built on or a pin advanced to (invariant 1). A "stated head" is
+  anything the host serves as a summary; the verifier never accepts one
   (invariant 2). Avoid: tip, latest entry, current entry.
 - **Candidate entry** -- the entry a writer has built against the verified head
   but not yet sent; the pre-write pass runs over it. Avoid: draft, pending
@@ -366,8 +384,8 @@ ARCHITECTURE.md Glossary section.
 - **Chain-head pin** -- a client's durable per-log record of the log's verified
   identity and latest verified head: `{ method, scid, head }`
   (`ResourceLogHeadPin`). Established at first contact, advanced only past a
-  full verification, replaced only across a verified handover (invariant 3).
-  Avoid: checkpoint, head cache, trust anchor.
+  verification, replaced only across a verified handover (invariant 3). Avoid:
+  checkpoint, head cache, trust anchor.
 - **Pin slot** -- the keyed place a `ResourceLogPinStore` holds one log's pin,
   named by the `logId` the library derives with `resourceLogPinId`, or with
   `collectionLogPinId` for a Collection's governing history log (invariant 4).

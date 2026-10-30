@@ -149,7 +149,8 @@ function isSealed({
  *   the append path as its `current` seed, so one carrying the read's
  *   validator also seeds the first attempt there; a confirmed append carries
  *   none, and that route reads before writing. The hint is caller-attested,
- *   as the append path's seed is.
+ *   as the append path's seed is, and resumes that path's reads the way the
+ *   seed does.
  *   Staleness is safe in both directions: entry controller versionIds are
  *   verifier-enforced monotone, so a stale head carrying a controller version
  *   at or past the removal means the true head does too, and an unsealed

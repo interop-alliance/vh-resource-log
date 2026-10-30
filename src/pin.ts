@@ -25,8 +25,9 @@
  * One log's pin: the format identifier from the genesis `parameters.method`,
  * the SCID, and the `versionId` of the latest verified head. Established at
  * first contact (trust-on-first-use of the log's identity), advanced only
- * after a full verification whose head is the pinned head or a descendant,
- * and replaced wholesale only across a verified handover.
+ * after a verification (full, or resumed from the client's own earlier
+ * result) whose head is the pinned head or a descendant, and replaced
+ * wholesale only across a verified handover.
  */
 export interface ResourceLogHeadPin {
   method: string
@@ -37,7 +38,7 @@ export interface ResourceLogHeadPin {
 /**
  * Where a client keeps its chain-head pins, one record per log, keyed by
  * `logId`. `read` resolves `null` before first contact with that log. Writes
- * happen only on the two legal transitions (advance after full verification,
+ * happen only on the two legal transitions (advance after a verification,
  * replace across a verified handover) -- the verifier never regresses a pin.
  *
  * The `logId` uniquely names one log among all the logs this store instance

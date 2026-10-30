@@ -46,6 +46,8 @@ import {
  * @param options.expectedMethod {string}
  * @param options.pinStore {ResourceLogPinStore}
  * @param options.logId {string}
+ * @param [options.previous] {VerifiedResourceLog}   the caller's earlier
+ *   verification of this log, as `verifyResourceLog` takes it
  * @returns {Promise<VerifiedResourceLog>}
  */
 async function verifyAndPin({
@@ -53,19 +55,22 @@ async function verifyAndPin({
   controller,
   expectedMethod,
   pinStore,
-  logId
+  logId,
+  previous
 }: {
   entries: ResourceLogEntry[]
   controller: ResourceLogController
   expectedMethod: string
   pinStore: ResourceLogPinStore
   logId: string
+  previous?: VerifiedResourceLog | null
 }): Promise<VerifiedResourceLog> {
   const verified = await verifyResourceLog({
     entries,
     controller,
     expectedMethod,
-    pin: await pinStore.read({ logId })
+    pin: await pinStore.read({ logId }),
+    previous
   })
   await pinStore.write({ logId, pin: verified.pin })
   return verified
@@ -104,6 +109,10 @@ export interface ResourceLogRead {
  *   log
  * @param options.logId {string}   the pin-slot key for this log, from
  *   `resourceLogPinId`
+ * @param [options.previous] {VerifiedResourceLog}   this caller's own
+ *   result from an earlier read of this log, passed as returned, resuming
+ *   the pass from its head as `verifyResourceLog` describes. Like the append
+ *   seed, it is caller-attested
  * @returns {Promise<ResourceLogRead | null>}
  */
 export async function readResourceLog({
@@ -111,13 +120,15 @@ export async function readResourceLog({
   controller,
   expectedMethod,
   pinStore,
-  logId
+  logId,
+  previous
 }: {
   store: ResourceLogStore
   controller: ResourceLogController
   expectedMethod: string
   pinStore: ResourceLogPinStore
   logId: string
+  previous?: VerifiedResourceLog | null
 }): Promise<ResourceLogRead | null> {
   const current = await store.read()
   if (current === null) {
@@ -135,7 +146,8 @@ export async function readResourceLog({
     controller,
     expectedMethod,
     pinStore,
-    logId
+    logId,
+    previous
   })
   return { verified, etag: current.etag }
 }
@@ -175,7 +187,10 @@ export async function readResourceLog({
  *   caller-attested: it is taken as that read's verified, pinned view and is
  *   not re-checked against the pin. A validator that has since gone stale is
  *   a lost race, and the retry re-reads. A seed with no validator seeds
- *   nothing; the first attempt reads
+ *   nothing; the first attempt reads. Either way the seed's verified log,
+ *   and after it each attempt's, resumes the next read's verification and
+ *   the read-back's from its head (as `verifyResourceLog`'s `previous`), so
+ *   a read-back verifies the one entry it appended
  * @returns {Promise<VerifiedResourceLog>}   the read-back, re-verified log
  *   (whether or not this call appended)
  */
@@ -210,6 +225,9 @@ export async function appendResourceLog({
   // used once and not counted, so a seeded call keeps `maxAttempts` fresh
   // reads. A seed without one (a confirmed append) seeds nothing.
   let seeded = seed?.etag ? seed : undefined
+  // The latest verification of this log this call holds: the seed's, then
+  // each attempt's. The next read resumes from its head.
+  let previous = seed?.verified
   for (let reads = 0; reads < maxAttempts;) {
     let current: ResourceLogRead | null
     if (seeded === undefined) {
@@ -219,7 +237,8 @@ export async function appendResourceLog({
         controller,
         expectedMethod,
         pinStore,
-        logId
+        logId,
+        previous
       })
     } else {
       current = seeded
@@ -232,6 +251,7 @@ export async function appendResourceLog({
       )
     }
     const { verified, etag } = current
+    previous = verified
     if (verified.terminal) {
       throw new ResourceLogClosedError({ nextLog: verified.terminal })
     }
@@ -278,7 +298,8 @@ export async function appendResourceLog({
       controller,
       expectedMethod,
       pinStore,
-      logId
+      logId,
+      previous
     })
   }
   throw new Error(

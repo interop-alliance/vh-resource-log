@@ -1,5 +1,22 @@
 # @interop/vh-resource-log Changelog
 
+## 0.10.0 - TBD
+
+### Added
+
+- `verifyResourceLog` and `readResourceLog` take an optional `previous`, the
+  caller's own earlier `VerifiedResourceLog` for the same log. A served log
+  extending it is verified from its head on: only the entries added since are
+  shape-checked, hash-chained to the record's head, proof-verified, and carried
+  from its head controller version, and the result reuses the record's entries.
+  A served log that does not extend the record is verified in full, with the
+  refusals a record-less pass gives. So is a record whose head controller
+  version is not at the record's index of the current `controller.versionIds`.
+- `appendResourceLog` resumes each read, including the read-back, from the
+  latest verification it holds (the seed's, then each attempt's), so a confirmed
+  append verifies the one entry it wrote. A `current` seed without a validator
+  now resumes the first read instead of seeding nothing.
+
 ## 0.9.0 - 2026-10-24
 
 ### Changed

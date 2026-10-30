@@ -22,6 +22,15 @@
  * checks are shared with `verifyResourceLogAppend`, the write path's
  * pre-write pass over a candidate entry, so a writer refuses exactly what a
  * reader would refuse.
+ *
+ * A caller that holds the verifier's own result for an earlier read of the
+ * same log may pass it back as `previous`. The served log is then checked to
+ * extend that record, every prefix `versionId` equal. The hash chain commits
+ * the prefix content to the head already verified, so only the entries past
+ * the record go through the per-entry checks. They are chained to the
+ * record's head and carried from its controller version. A served log that
+ * does not extend the record falls back to the full pass, so every refusal
+ * keeps the class and message it has without a record.
  */
 import {
   buildVersionId,
@@ -60,7 +69,7 @@ const ENTRY_MEMBERS = [
 ]
 
 /**
- * What full verification resolves to. `state` is the profile's definition of
+ * What verification resolves to. `state` is the profile's definition of
  * the resource's current state -- the verified head entry's `state` -- and
  * `pin` is the record the caller must store as its new chain-head pin.
  * `terminal` is the head's `nextLog` when the log is closed by a handover
@@ -602,14 +611,20 @@ async function verifyEntryAgainstHead({
 }
 
 /**
- * Runs the profile's full verification over a parsed log, in order: parse
- * shape, genesis (SCID recomputation, format identifier), chain-hash
- * recomputation, per-entry proofs, the external-authorization rule with
- * controller-version monotonicity, termination, and continuity against the
- * chain-head pin. Throws {@link ResourceLogIntegrityError} on
- * fabrication-class failures, {@link ResourceLogContinuityError} on pin
- * conflicts, and propagates a throw from the controller's `admitAppend` hook
- * with its class intact; any failure rejects the whole log.
+ * Runs the profile's verification over a parsed log, in order: parse shape,
+ * genesis (SCID recomputation, format identifier), chain-hash recomputation,
+ * per-entry proofs, the external-authorization rule with controller-version
+ * monotonicity, termination, and continuity against the chain-head pin.
+ * Throws {@link ResourceLogIntegrityError} on fabrication-class failures,
+ * {@link ResourceLogContinuityError} on pin conflicts, and propagates a throw
+ * from the controller's `admitAppend` hook with its class intact; any failure
+ * rejects the whole log.
+ *
+ * With `previous`, the caller's own earlier result for the same log, a served
+ * log that extends the record is verified from the record's head on. The
+ * steps above then run over the entries added since the record only, and the
+ * genesis step is the record's own. A served log that does not extend the
+ * record is verified in full.
  *
  * The controller view is the independently verified controller document --
  * never material served beside the log. An unversioned controller (empty
@@ -625,104 +640,97 @@ async function verifyEntryAgainstHead({
  *   dispatch hint the caller followed)
  * @param [options.pin] {ResourceLogHeadPin}   the held chain-head pin, when
  *   this client has verified the log before
+ * @param [options.previous] {VerifiedResourceLog}   this caller's own
+ *   result from an earlier verification of the same log, passed as returned.
+ *   A served log extending it is verified from its head on; one that does
+ *   not is verified in full, as is a record whose head controller version
+ *   is not at its index of `controller.versionIds`
  * @returns {Promise<VerifiedResourceLog>}
  */
 export async function verifyResourceLog({
   entries,
   controller,
   expectedMethod,
-  pin
+  pin,
+  previous
 }: {
   entries: ResourceLogEntry[]
   controller: ResourceLogController
   expectedMethod: string
   pin?: ResourceLogHeadPin | null
+  previous?: VerifiedResourceLog | null
 }): Promise<VerifiedResourceLog> {
   if (entries.length === 0) {
     throw new ResourceLogIntegrityError(
       'The resource log is empty (a log carries at least its genesis entry).'
     )
   }
+  // The record to resume from, when the served log extends it, else `null`
+  // for the full pass. The served prefix is matched by `versionId` alone.
+  // Each `versionId` commits its entry's content and its predecessor's
+  // `versionId`, so equal `versionId`s mean the content verified before. The
+  // result is built from the record's own entries, so no served prefix bytes
+  // are handed out unverified. The proofs of a prefix entry are outside its
+  // hash and are not re-checked: they verified when the record was built.
+  const resumed = resumeFrom({ previous, entries, controller, expectedMethod })
+  const start = resumed?.entries.length ?? 0
 
   // 1. Parse: per-entry shape, parameters rules, ordinal positions.
-  entries.forEach((entry, index) => {
-    checkEntryShape(entry, index)
-  })
+  for (let index = start; index < entries.length; index++) {
+    checkEntryShape(entries[index]!, index)
+  }
 
-  // 2. Genesis: format identifier, then SCID recomputation.
+  // 2. Genesis: format identifier, then SCID recomputation. A resumed pass
+  // takes the genesis facts from the record.
   const genesisParameters = entries[0]!.parameters as {
     method: string
     scid: string
     previousLog?: { scid: string; head: string }
   }
-  const { method, scid } = genesisParameters
+  const genesis = resumed ?? {
+    method: genesisParameters.method,
+    scid: genesisParameters.scid,
+    previousLog: genesisParameters.previousLog ?? null
+  }
+  const { method, scid } = genesis
   if (method !== expectedMethod) {
     throw new ResourceLogIntegrityError(
       `The resource log declares format "${method}", not the expected ` +
         `"${expectedMethod}".`
     )
   }
-  // The inverse of genesis construction: every occurrence of the SCID in
-  // every string of the hash input (the kernel's substitution, so a SCID
-  // embedded in a longer value substitutes the same way it was placed).
-  const preliminary = replaceValueInObject(
-    hashInputOf(entries[0]!, SCID_PLACEHOLDER),
-    scid,
-    SCID_PLACEHOLDER
-  )
-  if ((await deriveHash(preliminary)) !== scid) {
-    throw new ResourceLogIntegrityError(
-      'The resource log SCID does not verify against its genesis content.'
+  if (resumed === null) {
+    // The inverse of genesis construction: every occurrence of the SCID in
+    // every string of the hash input (the kernel's substitution, so a SCID
+    // embedded in a longer value substitutes the same way it was placed).
+    const preliminary = replaceValueInObject(
+      hashInputOf(entries[0]!, SCID_PLACEHOLDER),
+      scid,
+      SCID_PLACEHOLDER
     )
-  }
-
-  // 3. Chain: recompute every entry hash from the predecessor-substituted
-  // input; never accept a stated head.
-  let predecessorVersionId = scid
-  for (const [index, entry] of entries.entries()) {
-    await checkEntryChain({ entry, index, predecessorVersionId })
-    predecessorVersionId = entry.versionId
-  }
-
-  // 4 + 5. Proofs and authorization, entry by entry, with controller-version
-  // monotonicity carried along the log.
-  const versioned = controller.versionIds.length > 0
-  const versionIndexes = versionIndexesOf(controller)
-  let headVersionIndex = 0
-  for (const [index, entry] of entries.entries()) {
-    headVersionIndex = await verifyEntryAgainstHead({
-      entry,
-      index,
-      controller,
-      headVersionIndex,
-      versionIndexes,
-      versioned
-    })
-  }
-
-  // 6. Termination: a terminal entry closes the log -- it must be last, must
-  // not be the genesis, and must change no state.
-  let terminal: { method: string; scid: string } | null = null
-  for (const [index, entry] of entries.entries()) {
-    if (!isTerminalResourceLogEntry(entry) || index === 0) {
-      continue
-    }
-    if (index !== entries.length - 1) {
+    if ((await deriveHash(preliminary)) !== scid) {
       throw new ResourceLogIntegrityError(
-        'The resource log continues past a terminal handover entry.'
+        'The resource log SCID does not verify against its genesis content.'
       )
     }
-    checkTerminalState({
-      entry,
-      predecessorState: entries[index - 1]!.state
-    })
-    terminal = (
-      entry.parameters as { nextLog: { method: string; scid: string } }
-    ).nextLog
   }
 
+  // 3 to 6. Chain, proofs, authorization, and termination over the entries
+  // past the resume point, from the SCID or from the record's verified head.
+  const tailEntries = entries.slice(start)
+  const tail = await verifyTail({
+    entries: tailEntries,
+    previous: resumed,
+    scid,
+    controller
+  })
+
+  // The verified log: the record's entries, when resumed, then the entries
+  // verified above.
+  const verifiedEntries = [...(resumed?.entries ?? []), ...tailEntries]
+
   // 7. Continuity against the chain-head pin, where one is held.
-  const head = entries[entries.length - 1]!
+  const head = verifiedEntries[verifiedEntries.length - 1]!
   if (pin) {
     if (pin.method !== method) {
       throw new ResourceLogContinuityError({
@@ -759,15 +767,168 @@ export async function verifyResourceLog({
   }
 
   return {
-    entries,
+    entries: verifiedEntries,
     method,
     scid,
     head,
     state: head.state,
     pin: { method, scid, head: head.versionId },
+    headControllerVersionIndex: tail.headControllerVersionIndex,
+    terminal: tail.terminal,
+    previousLog: genesis.previousLog
+  }
+}
+
+/**
+ * The record to resume a pass from: `previous` when the served log extends
+ * it, else `null`. The record must declare the expected format and must have
+ * been verified under the same versioned-or-not kind of controller view (its
+ * head controller version index means nothing under the other kind). Under a
+ * versioned view, the record's head controller version (the controller
+ * versionId its head proof carries) must sit at that index of this view's
+ * `versionIds`, so the index the tail is carried from names the same version
+ * here. The served log must be at least as long as the record with every
+ * prefix `versionId` equal. Anything else is a log the record does not
+ * describe, verified in full, so a fork, rollback, or fabrication against the
+ * record refuses exactly as it would without one.
+ *
+ * @param options {object}
+ * @param [options.previous] {VerifiedResourceLog}
+ * @param options.entries {ResourceLogEntry[]}   the served log
+ * @param options.controller {ResourceLogController}
+ * @param options.expectedMethod {string}
+ * @returns {VerifiedResourceLog | null}
+ */
+function resumeFrom({
+  previous,
+  entries,
+  controller,
+  expectedMethod
+}: {
+  previous?: VerifiedResourceLog | null
+  entries: ResourceLogEntry[]
+  controller: ResourceLogController
+  expectedMethod: string
+}): VerifiedResourceLog | null {
+  if (!previous || previous.method !== expectedMethod) {
+    return null
+  }
+  const headIndex = previous.headControllerVersionIndex
+  if ((headIndex !== null) !== controller.versionIds.length > 0) {
+    return null
+  }
+  if (headIndex !== null) {
+    const headVersionId = parseVersionedVm(
+      previous.head.proof[0]?.verificationMethod ?? ''
+    )?.controllerVersionId
+    // An index past this view's list reads `undefined`, so a missing head
+    // version must not match it.
+    if (
+      headVersionId === undefined ||
+      controller.versionIds[headIndex] !== headVersionId
+    ) {
+      return null
+    }
+  }
+  const extended =
+    entries.length >= previous.entries.length &&
+    previous.entries.every(
+      (entry, index) => entries[index]!.versionId === entry.versionId
+    )
+  return extended ? previous : null
+}
+
+/**
+ * Verifies the entries past a verified point of a log, as the read path
+ * verifies them: every entry's hash chain to its predecessor, then every
+ * entry's proofs and the authorization rule with controller-version
+ * monotonicity carried from the predecessor, then the termination rule (a
+ * terminal entry must be last, must not be the genesis, and must change no
+ * state). A terminal predecessor admits no entry. Shape is checked by the
+ * caller first, since the read path's genesis step sits between shape and
+ * chain.
+ *
+ * @param options {object}
+ * @param options.entries {ResourceLogEntry[]}   the entries to verify, in
+ *   log order
+ * @param options.previous {VerifiedResourceLog | null}   the verified log the
+ *   entries extend; `null` when they start at the genesis
+ * @param options.scid {string}   the log's SCID (the genesis predecessor)
+ * @param options.controller {ResourceLogController}
+ * @returns {Promise<object>}   the controller version at the last entry as an
+ *   index into `controller.versionIds` (`null` when unversioned), and the
+ *   `nextLog` of a terminal head (`null` otherwise)
+ */
+async function verifyTail({
+  entries,
+  previous,
+  scid,
+  controller
+}: {
+  entries: ResourceLogEntry[]
+  previous: VerifiedResourceLog | null
+  scid: string
+  controller: ResourceLogController
+}): Promise<{
+  headControllerVersionIndex: number | null
+  terminal: { method: string; scid: string } | null
+}> {
+  if (previous?.terminal && entries.length > 0) {
+    throw new ResourceLogIntegrityError(
+      'The resource log continues past a terminal handover entry.'
+    )
+  }
+  const start = previous?.entries.length ?? 0
+  const versioned = controller.versionIds.length > 0
+
+  // 3. Chain: recompute every entry hash from the predecessor-substituted
+  // input; never accept a stated head.
+  let predecessorVersionId = previous?.head.versionId ?? scid
+  for (const [offset, entry] of entries.entries()) {
+    await checkEntryChain({
+      entry,
+      index: start + offset,
+      predecessorVersionId
+    })
+    predecessorVersionId = entry.versionId
+  }
+
+  // 4 + 5. Proofs and authorization, entry by entry, with controller-version
+  // monotonicity carried along the log.
+  const versionIndexes = versionIndexesOf(controller)
+  let headVersionIndex = previous?.headControllerVersionIndex ?? 0
+  for (const [offset, entry] of entries.entries()) {
+    headVersionIndex = await verifyEntryAgainstHead({
+      entry,
+      index: start + offset,
+      controller,
+      headVersionIndex,
+      versionIndexes,
+      versioned
+    })
+  }
+
+  // 6. Termination: a terminal entry closes the log -- it must be last, must
+  // not be the genesis, and must change no state.
+  let terminal = previous?.terminal ?? null
+  let predecessorState = previous?.head.state
+  for (const [offset, entry] of entries.entries()) {
+    if (isTerminalResourceLogEntry(entry) && start + offset > 0) {
+      if (offset !== entries.length - 1) {
+        throw new ResourceLogIntegrityError(
+          'The resource log continues past a terminal handover entry.'
+        )
+      }
+      checkTerminalState({ entry, predecessorState: predecessorState! })
+      terminal = (
+        entry.parameters as { nextLog: { method: string; scid: string } }
+      ).nextLog
+    }
+    predecessorState = entry.state
+  }
+  return {
     headControllerVersionIndex: versioned ? headVersionIndex : null,
-    terminal,
-    previousLog: genesisParameters.previousLog ?? null
+    terminal
   }
 }
 
@@ -829,24 +990,13 @@ export async function verifyResourceLogAppend({
             'its versioned entries would fail against this unversioned view.'
     )
   }
-  const index = head.entries.length
-  checkEntryShape(entry, index)
-  await checkEntryChain({
-    entry,
-    index,
-    predecessorVersionId: head.head.versionId
+  checkEntryShape(entry, head.entries.length)
+  await verifyTail({
+    entries: [entry],
+    previous: head,
+    scid: head.scid,
+    controller
   })
-  await verifyEntryAgainstHead({
-    entry,
-    index,
-    controller,
-    headVersionIndex: head.headControllerVersionIndex ?? 0,
-    versionIndexes: versionIndexesOf(controller),
-    versioned
-  })
-  if (isTerminalResourceLogEntry(entry)) {
-    checkTerminalState({ entry, predecessorState: head.head.state })
-  }
 }
 
 /**
